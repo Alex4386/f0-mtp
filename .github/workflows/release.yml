@@ -44,7 +44,7 @@ jobs:
                 chmod +x ./.github/scripts/renamer.sh
                 ./.github/scripts/renamer.sh
             env:
-                FILE_SUFFIX: ${{ matrix.sdk-ident }}
+                FILE_SUFFIX: ${{ matrix.sdk-ident }}-${{ steps.build-app.outputs.suffix }}
                 DIST_FILE: ${{ steps.build-app.outputs.fap-artifacts }}
           - name: Upload packages to release
             uses: svenstaro/upload-release-action@v2
