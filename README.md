@@ -25,7 +25,7 @@
 3. Run `ufbt update` to update the SDK for your flipper
     - If you are using custom firmware, You should switch SDK. Here is the example for `unleashed` firmware:
         ```bash
-        ufbt update --url=https://up.unleashedflip.com/directory.json
+        ufbt update --index-url=https://up.unleashedflip.com/directory.json
         ```
     - If you want to use different release channel, You can run update to that channel too. Here is the example for `dev` channel (`dev`, `rc`, `release` are supported):
         ```bash
