@@ -16,8 +16,7 @@ App(
 
     # Dependencies
     requires=[
-        "gui",  # allows to use GUI functions
-        
+
     ],
 
     # FAP Settings

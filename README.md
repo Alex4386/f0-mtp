@@ -48,5 +48,5 @@
 ## Developer Resources
 Here are the resources for developing applications for Flipper Zero:
 - [Flipper Zero Firmware Docs](https://developer.flipper.net/flipperzero/doxygen/)
-  - [`struct` list](https://developer.flipper.net/flipperzero/doxygen/annotated.html) [index](https://developer.flipper.net/flipperzero/doxygen/classes.html)
+  - [`struct` list](https://developer.flipper.net/flipperzero/doxygen/annotated.html) ([index](https://developer.flipper.net/flipperzero/doxygen/classes.html))
 - [Flipper Zero code examples](https://github.com/m1ch3al/flipper-zero-dev-tutorial)
