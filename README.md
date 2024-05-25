@@ -15,7 +15,8 @@
 |:-------------:|:-------------:|
 | ![Nightly Build](https://github.com/Alex4386/f0-template/actions/workflows/nightly.yml/badge.svg) | ![Release Build](https://github.com/Alex4386/f0-template/actions/workflows/release.yml/badge.svg) |
 
-## Build Instruction
+## Setup Build environment
+### Build Instruction
 1. Install `ufbt`:
     ```bash
     pip3 install ufbt
@@ -36,7 +37,7 @@
     ```
 5. Compiled binary is now available at `./dist/` directory.
 
-## Setup Visual Studio Code
+### Setup Visual Studio Code
 > [!WARNING]
 > This command will overwrite your `.vscode` directory and `.gitignore` on your root directory. 
 > **Make sure to backup your changes before running this command.**
@@ -44,3 +45,8 @@
 1. Suppose your build environment is ready.
 2. Run `ufbt vscode_dist` to generate Visual Studio Code config.
 
+## Developer Resources
+Here are the resources for developing applications for Flipper Zero:
+- [Flipper Zero Firmware Docs](https://developer.flipper.net/flipperzero/doxygen/)
+  - [`struct` list](https://developer.flipper.net/flipperzero/doxygen/annotated.html) [index](https://developer.flipper.net/flipperzero/doxygen/classes.html)
+- [Flipper Zero code examples](https://github.com/m1ch3al/flipper-zero-dev-tutorial)

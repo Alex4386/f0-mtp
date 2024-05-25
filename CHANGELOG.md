@@ -1,9 +1,5 @@
+v1.0:
+ * The first release of the plugin
+
 v0.5:
- * added images
-
-v0.4:
- * added changelog
-
-older:
- * various
- * fixes
+ * this is the example of the changelog
