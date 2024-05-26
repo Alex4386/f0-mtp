@@ -1,27 +1,36 @@
 #include <stdio.h>
 #include <furi.h>
 #include <gui/gui.h>
-#include "events.h"
-#include "utils/gui.h"
+#include "main.h"
+#include "scenes/register.h"
 
 int main() {
-    // 1. Provision the InputHandlers
-    // Handle input event
-    InputEvent event;
-    GUISetupData* gui_setup = setup_gui(on_draw, on_input);
+    App* app = malloc(sizeof(App));
+    furi_assert(app != NULL, "Failed to allocate memory for the app");
 
-    // 2. Main EventLoop
-    while(true) {
-        // 4.1. Read input event from the message queue
-        furi_check(
-            furi_message_queue_get(gui_setup->msg_queue, &event, FuriWaitForever) == FuriStatusOk);
+    Gui* gui = furi_record_open(RECORD_GUI);
+    furi_assert(gui != NULL, "Failed to open the GUI record");
 
-        // 4.2. check if the event is a quit event
-        if(event.key == InputKeyBack) {
-            break;
-        }
-    }
+    register_scenes(app);
+    view_dispatcher_attach_to_gui(app->view_dispatcher, gui, ViewDispatcherTypeFullscreen);
 
-    // 3. Free the resources
-    free_gui(gui_setup);
+    // The default scene is always the first one!
+    scene_manager_next_scene(app->scene_manager, 0);
+    view_dispatcher_switch_to_view(app->view_dispatcher, 0);
+
+    view_dispatcher_run(app->view_dispatcher);
+
+    FURI_LOG_I("DemoApp", "Exiting application.");
+    free_scenes(app);
+
+    FURI_LOG_I("DemoApp", "Freed app.");
+
+    return 0;
+}
+
+// Stub entrypoint due to gcc complaining about
+// mismatching main function signature.
+int32_t entrypoint(void* p) {
+    UNUSED(p);
+    return main();
 }

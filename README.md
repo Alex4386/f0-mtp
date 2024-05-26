@@ -50,3 +50,19 @@ Here are the resources for developing applications for Flipper Zero:
 - [Flipper Zero Firmware Docs](https://developer.flipper.net/flipperzero/doxygen/)
   - [`struct` list](https://developer.flipper.net/flipperzero/doxygen/annotated.html) ([index](https://developer.flipper.net/flipperzero/doxygen/classes.html))
 - [Flipper Zero code examples](https://github.com/m1ch3al/flipper-zero-dev-tutorial)
+- [Lopaka, Graphics Editor for Embedded Devices](https://lopaka.app/)  
+  Note that Flipper Zero has screen dimension of `128x64`.  
+  
+
+### How to use `SceneManager` with this project?
+This template implements `SceneManager`, A "Scene" based framework for programming flipper zero GUIs.
+
+Here is how you can add/modify scenes in this repository:
+1. Goto [`./src/scenes/list.h`](/src/scenes/list.h).  
+2. Add your own scene by using macro: `SCENE_ACTION`.
+   (e.g. If you want to make new scene called `Store`, You should type `SCENE_ACTION(Store)`)
+3. Implement `_on_enter`, `_on_event`, `_on_exit`, `_get_view`, `_alloc`, `_free` accordingly. Refer to [`./src/scenes/home/main.c`](/src/scenes/home/main.c) for more info.    
+   (F0 doesn't make sure the precendence of `_on_exit` and `_free`. Please make sure those two are independent by checking each other's free'd state)
+4. Add headers to export those functions.
+5. Include your header in [`./src/scenes/import.h`](/src/scenes/import.h).  
+

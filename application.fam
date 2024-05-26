@@ -5,14 +5,15 @@ App(
     appid="demo_app",  # Must be unique
     name="Demo Application",  # Displayed in UI
     apptype=FlipperAppType.EXTERNAL,
-    entry_point="main_entrypoint",
+    entry_point="entrypoint",
     stack_size=2 * 1024, # size of memory stack it will allocate
     
     # source code settings
-    sources=["src/*.c*", "src/*/*.c*"], # Due to limitation of the fbt,
-                                        # you need to specify nested directories
-                                        # manually since it doesn't support
-                                        # recurse globbing such as "src/**/*.c*"
+    sources=[            # Due to limitation of the fbt,
+      "src/*.c*",        # you need to specify nested directories
+      "src/*/*.c*",      # manually since it doesn't support
+      "src/*/*/*.c*"     # recurse globbing such as "src/**/*.c*"
+    ], 
 
     # Dependencies
     requires=[
