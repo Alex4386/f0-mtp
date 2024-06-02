@@ -2,6 +2,7 @@
 #include <gui/modules/submenu.h>
 #include "../../main.h"
 #include "main.h"
+#include <demo_app_icons.h>
 
 #define THIS_SCENE About
 
@@ -20,11 +21,12 @@ void About_on_draw(Canvas* canvas, void* context) {
     canvas_clear(canvas);
 
     canvas_set_bitmap_mode(canvas, true);
+    canvas_draw_icon(canvas, 2, 3, &I_DolphinWait);
     canvas_set_font(canvas, FontPrimary);
     canvas_draw_str(canvas, 67, 11, "f0-template");
     canvas_set_font(canvas, FontSecondary);
     canvas_draw_str(canvas, 72, 20, "by Alex4386");
-    canvas_draw_line(canvas, 54, 25, 124, 25);
+    canvas_draw_line(canvas, 68, 25, 124, 25);
     canvas_draw_str(canvas, 71, 39, "Protected by");
     canvas_set_font(canvas, FontPrimary);
     canvas_draw_str(canvas, 61, 51, "Fantasy Seal");
