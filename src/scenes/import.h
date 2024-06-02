@@ -6,3 +6,4 @@
 
 #include "home/main.h"
 #include "about/main.h"
+#include "mtp/main.h"

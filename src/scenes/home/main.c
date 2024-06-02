@@ -65,9 +65,12 @@ void Home_on_submenu_item(void* context, uint32_t index) {
     case 1:
         FURI_LOG_I("DemoApp", "About");
         scene_manager_next_scene(app->scene_manager, About);
-        view_dispatcher_switch_to_view(app->view_dispatcher, About);
         break;
     case 2:
+        FURI_LOG_I("DemoApp", "MTP");
+        scene_manager_next_scene(app->scene_manager, MTP);
+        break;
+    case 99:
         FURI_LOG_I("DemoApp", "Exit");
         Home_on_exit(app);
         view_dispatcher_stop(app->view_dispatcher);
@@ -83,7 +86,10 @@ void Home_on_enter(void* context) {
 
     submenu_add_item(home->menu, "Hello World", 0, Home_on_submenu_item, app);
     submenu_add_item(home->menu, "About", 1, Home_on_submenu_item, app);
-    submenu_add_item(home->menu, "Exit", 2, Home_on_submenu_item, app);
+    submenu_add_item(home->menu, "MTP", 2, Home_on_submenu_item, app);
+    submenu_add_item(home->menu, "Exit", 99, Home_on_submenu_item, app);
+
+    view_dispatcher_switch_to_view(app->view_dispatcher, THIS_SCENE);
 }
 
 bool Home_on_event(void* context, SceneManagerEvent event) {

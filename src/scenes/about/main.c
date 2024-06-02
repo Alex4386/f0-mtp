@@ -49,7 +49,9 @@ View* About_get_view(void* ptr) {
 }
 
 void About_on_enter(void* context) {
-    UNUSED(context);
+    App* app = (App*)context;
+
+    view_dispatcher_switch_to_view(app->view_dispatcher, THIS_SCENE);
 }
 
 bool About_on_event(void* context, SceneManagerEvent event) {
@@ -69,6 +71,6 @@ void About_on_exit(void* context) {
         return;
     }
 
-    if(app->view_dispatcher) view_dispatcher_switch_to_view(app->view_dispatcher, Home);
-    if(app->scene_manager) scene_manager_previous_scene(app->scene_manager);
+    //if(app->view_dispatcher) view_dispatcher_switch_to_view(app->view_dispatcher, Home);
+    //if(app->scene_manager) scene_manager_previous_scene(app->scene_manager);
 }
