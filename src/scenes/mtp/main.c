@@ -3,6 +3,7 @@
 #include "../../main.h"
 #include "main.h"
 #include <demo_app_icons.h>
+#include "usb.h"
 
 #define THIS_SCENE MTP
 
@@ -15,7 +16,7 @@ AppMTP* MTP_alloc() {
     view_set_context(about->view, about);
     view_set_draw_callback(about->view, MTP_on_draw);
 
-    about->usb_connected = true;
+    about->usb_connected = false;
     tmp = about;
 
     return about;
@@ -79,6 +80,13 @@ void MTP_on_enter(void* context) {
     App* app = (App*)context;
 
     view_dispatcher_switch_to_view(app->view_dispatcher, THIS_SCENE);
+    furi_assert(app->allocated_scenes != NULL, "App allocated scenes is NULL");
+
+    AppMTP* mtp = app->allocated_scenes[THIS_SCENE];
+    if(mtp != NULL) {
+        mtp->old_usb = furi_hal_usb_get_config();
+        furi_hal_usb_set_config(&usb_mtp_interface, mtp);
+    }
 }
 
 bool MTP_on_event(void* context, SceneManagerEvent event) {
@@ -97,6 +105,9 @@ void MTP_on_exit(void* context) {
     if(app == NULL) {
         return;
     }
+
+    // revert to old usb mode
+    furi_hal_usb_set_config(tmp->old_usb, NULL);
 
     // if(app->view_dispatcher) view_dispatcher_switch_to_view(app->view_dispatcher, Home);
     // if(app->scene_manager) scene_manager_previous_scene(app->scene_manager);

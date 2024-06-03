@@ -2,12 +2,18 @@
 #include <gui/view.h>
 #include <gui/modules/submenu.h>
 #include <gui/modules/popup.h>
+#include <furi_hal.h>
 
 typedef struct AppMTP {
     Submenu* menu;
     View* view;
 
     bool usb_connected;
+
+    // usb stuff
+    FuriHalUsbInterface* old_usb;
+    FuriThread* worker_thread;
+    usbd_device* dev;
 } AppMTP;
 
 AppMTP* MTP_alloc();
