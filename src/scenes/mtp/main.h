@@ -5,6 +5,14 @@
 #include <gui/scene_manager.h>
 #include <furi_hal.h>
 
+typedef enum MTPState {
+    MTPStateOffline,
+    MTPStateReady,
+    MTPStateBusy,
+    MTPStateCanceled,
+    MTPStateError
+} MTPState;
+
 typedef struct AppMTP {
     Submenu* menu;
     View* view;
@@ -15,6 +23,9 @@ typedef struct AppMTP {
     FuriHalUsbInterface* old_usb;
     FuriThread* worker_thread;
     usbd_device* dev;
+
+    MTPState state;
+    bool is_working;
 } AppMTP;
 
 AppMTP* MTP_alloc();

@@ -17,7 +17,6 @@ AppMTP* MTP_alloc() {
     view_set_context(about->view, about);
     view_set_draw_callback(about->view, MTP_on_draw);
 
-    about->usb_connected = false;
     tmp = about;
 
     return about;
@@ -86,7 +85,15 @@ void MTP_on_enter(void* context) {
     AppMTP* mtp = app->allocated_scenes[THIS_SCENE];
     if(mtp != NULL) {
         mtp->old_usb = furi_hal_usb_get_config();
-        furi_hal_usb_set_config(&usb_mtp_interface, mtp);
+
+        // copy serial number
+        usb_mtp_interface.str_serial_descr = mtp->old_usb->str_serial_descr;
+
+        // set new usb mode for MTP mode
+        if(!furi_hal_usb_set_config(&usb_mtp_interface, mtp)) {
+            FURI_LOG_E("MTP", "Failed to set MTP mode");
+            return;
+        }
     }
 }
 
