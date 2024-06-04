@@ -12,6 +12,8 @@ enum UsbDevDescStr {
     UsbDevManuf = 1,
     UsbDevProduct = 2,
     UsbDevSerial = 3,
+    UsbDevHighSpeed = 4,
+    UsbDevLowSpeed = 5,
 };
 /* ===   END furi_hal_usb_i.h === */
 
