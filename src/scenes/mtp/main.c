@@ -4,6 +4,7 @@
 #include "main.h"
 #include <demo_app_icons.h>
 #include "usb.h"
+#include "usb_desc.h"
 
 #define THIS_SCENE MTP
 

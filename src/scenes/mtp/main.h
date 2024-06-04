@@ -2,6 +2,7 @@
 #include <gui/view.h>
 #include <gui/modules/submenu.h>
 #include <gui/modules/popup.h>
+#include <gui/scene_manager.h>
 #include <furi_hal.h>
 
 typedef struct AppMTP {

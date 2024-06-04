@@ -1,7 +1,9 @@
 #include "main.h"
 #include "usb.h"
+#include "usb_desc.h"
 #include <furi.h>
 #include <furi_hal.h>
+#include <furi_hal_usb.h>
 
 // Define MTP specific request constants
 #define MTP_REQ_GET_DEVICE_STATUS 0x67
@@ -21,6 +23,10 @@ typedef enum {
 int32_t usb_mtp_worker(void* ctx) {
     AppMTP* mtp = ctx;
     usbd_device* dev = mtp->dev;
+
+    // temporary!!!
+    UNUSED(dev);
+
     while(true) {
         furi_thread_flags_wait(EventAll, FuriFlagWaitAny, FuriWaitForever);
         if(furi_thread_flags_get() & EventExit) break;
@@ -39,6 +45,20 @@ int32_t usb_mtp_worker(void* ctx) {
     return 0;
 }
 
+usbd_respond usb_mtp_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_callback* callback) {
+    UNUSED(dev);
+    UNUSED(callback);
+    if(((USB_REQ_RECIPIENT | USB_REQ_TYPE) & req->bmRequestType) !=
+       (USB_REQ_INTERFACE | USB_REQ_CLASS)) {
+        if(global_mtp != NULL) {
+            global_mtp->usb_connected = false;
+        }
+        return usbd_fail;
+    }
+    switch(req->bRequest) {};
+    return usbd_fail;
+}
+
 void usb_mtp_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     UNUSED(intf);
     AppMTP* mtp = ctx;
@@ -55,20 +75,7 @@ void usb_mtp_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     furi_thread_start(mtp->worker_thread);
 }
 
-usbd_respond usb_mtp_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_callback* callback) {
-    UNUSED(callback);
-    if(((USB_REQ_RECIPIENT | USB_REQ_TYPE) & req->bmRequestType) !=
-       (USB_REQ_INTERFACE | USB_REQ_CLASS)) {
-        if(global_mtp != NULL) {
-            global_mtp->usb_connected = false;
-        }
-        return usbd_fail;
-    }
-    switch(req->bRequest) {};
-    return usbd_fail;
-}
-
-void usb_deinit(usbd_device* dev) {
+void usb_mtp_deinit(usbd_device* dev) {
     usbd_reg_control(dev, NULL);
 
     AppMTP* mtp = global_mtp;
@@ -86,11 +93,11 @@ void usb_deinit(usbd_device* dev) {
     mtp->worker_thread = NULL;
 }
 
-void usb_wakeup(usbd_device* dev) {
+void usb_mtp_wakeup(usbd_device* dev) {
     UNUSED(dev);
 }
 
-void usb_suspend(usbd_device* dev) {
+void usb_mtp_suspend(usbd_device* dev) {
     AppMTP* mtp = global_mtp;
     if(!mtp || mtp->dev != dev) return;
     furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventReset);
