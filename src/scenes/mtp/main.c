@@ -12,30 +12,31 @@ AppMTP* tmp;
 
 void MTP_on_draw(Canvas* canvas, void* context);
 AppMTP* MTP_alloc() {
-    AppMTP* about = (AppMTP*)malloc(sizeof(AppMTP));
-    about->view = view_alloc();
-    view_set_context(about->view, about);
-    view_set_draw_callback(about->view, MTP_on_draw);
+    AppMTP* mtp = (AppMTP*)malloc(sizeof(AppMTP));
+    mtp->view = view_alloc();
+    view_set_context(mtp->view, mtp);
+    view_set_draw_callback(mtp->view, MTP_on_draw);
 
-    tmp = about;
+    mtp->storage = furi_record_open(RECORD_STORAGE);
+    tmp = mtp;
 
-    return about;
+    return mtp;
 }
 
 void MTP_on_draw(Canvas* canvas, void* context) {
-    AppMTP* about = (AppMTP*)context;
+    AppMTP* mtp = (AppMTP*)context;
 
     canvas_clear(canvas);
     canvas_set_bitmap_mode(canvas, true);
 
     bool usb_connected = false;
-    if(about == NULL) {
+    if(mtp == NULL) {
         // facepalm
         if(tmp != NULL) {
             usb_connected = tmp->usb_connected;
         }
     } else {
-        usb_connected = about->usb_connected;
+        usb_connected = mtp->usb_connected;
     }
 
     if(usb_connected) {
@@ -52,6 +53,7 @@ void MTP_on_draw(Canvas* canvas, void* context) {
     } else {
         canvas_draw_icon(canvas, 1, 31, &I_Connect_me);
         canvas_set_font(canvas, FontPrimary);
+        canvas_draw_str(canvas, 43, 10, "MTP Connection");
         canvas_draw_str(canvas, 10, 25, "Plug me into computer!");
         canvas_draw_icon(canvas, 2, 2, &I_Pin_back_arrow);
         canvas_set_font(canvas, FontSecondary);

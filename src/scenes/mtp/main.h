@@ -3,6 +3,7 @@
 #include <gui/modules/submenu.h>
 #include <gui/modules/popup.h>
 #include <gui/scene_manager.h>
+#include <storage/storage.h>
 #include <furi_hal.h>
 
 typedef enum MTPState {
@@ -12,6 +13,11 @@ typedef enum MTPState {
     MTPStateCanceled,
     MTPStateError
 } MTPState;
+
+typedef struct {
+    uint32_t session_id;
+    bool session_open;
+} MTPSession;
 
 typedef struct AppMTP {
     Submenu* menu;
@@ -26,6 +32,10 @@ typedef struct AppMTP {
 
     MTPState state;
     bool is_working;
+    Storage* storage;
+    MTPSession session;
+
+    bool write_pending;
 } AppMTP;
 
 AppMTP* MTP_alloc();

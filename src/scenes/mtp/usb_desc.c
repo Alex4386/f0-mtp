@@ -4,9 +4,8 @@
 #include "usb.h"
 #include "usb_desc.h"
 
-const struct usb_string_descriptor dev_manuf_desc = USB_STRING_DESC("Flipper Devices Inc.");
-const struct usb_string_descriptor dev_prod_desc =
-    USB_STRING_DESC("Flipper Zero Virtual MTP Device");
+const struct usb_string_descriptor dev_manuf_desc = USB_STRING_DESC(USB_MANUFACTURER_STRING);
+const struct usb_string_descriptor dev_prod_desc = USB_STRING_DESC(USB_PRODUCT_STRING);
 
 const uint8_t usb_mtp_os_string[] = {
     18,

@@ -14,15 +14,16 @@ AppMTP* global_mtp;
 typedef enum {
     EventExit = 1 << 0,
     EventReset = 1 << 1,
-    EventRxTx = 1 << 2,
-    EventAll = EventExit | EventReset | EventRxTx,
+    EventTx = 1 << 2,
+    EventRx = 1 << 3,
+    EventInterrupt = 1 << 4,
+    EventAll = EventExit | EventReset | EventRx | EventTx | EventInterrupt,
 } MTPEvent;
 
 int32_t usb_mtp_worker(void* ctx) {
     AppMTP* mtp = ctx;
     usbd_device* dev = mtp->dev;
-
-    UNUSED(dev);
+    uint8_t buffer[MTP_MAX_PACKET_SIZE];
 
     while(true) {
         MTPEvent flags = furi_thread_flags_wait(EventAll, FuriFlagWaitAny, FuriWaitForever);
@@ -36,8 +37,30 @@ int32_t usb_mtp_worker(void* ctx) {
             // Handle USB reset if necessary
         }
 
-        if(flags & EventRxTx) {
-            FURI_LOG_W("MTP", "USB Rx/Tx event");
+        if(flags & EventTx) {
+            FURI_LOG_W("MTP", "USB Tx event");
+            // Handle MTP RX/TX data here
+            // Implement the logic for processing MTP requests, sending responses, etc.
+
+            mtp->write_pending = false;
+        }
+
+        if(flags & EventRx) {
+            FURI_LOG_W("MTP", "USB Rx event");
+
+            int32_t readBytes = usbd_ep_read(dev, MTP_EP_IN_ADDR, buffer, MTP_MAX_PACKET_SIZE);
+            FURI_LOG_I("MTP", "Received %ld bytes", readBytes);
+
+            if(readBytes > 0) {
+                mtp_handle_bulk(mtp, buffer, readBytes);
+            }
+
+            // Handle MTP RX/TX data here
+            // Implement the logic for processing MTP requests, sending responses, etc.
+        }
+
+        if(flags & EventInterrupt) {
+            FURI_LOG_W("MTP", "USB Interrupt event");
             // Handle MTP RX/TX data here
             // Implement the logic for processing MTP requests, sending responses, etc.
         }
@@ -47,7 +70,6 @@ int32_t usb_mtp_worker(void* ctx) {
 }
 
 usbd_respond usb_mtp_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_callback* callback) {
-    UNUSED(dev);
     UNUSED(callback);
 
     AppMTP* mtp = global_mtp;
@@ -82,48 +104,14 @@ usbd_respond usb_mtp_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_callba
             return usbd_ack;
         }
     } else if((req->bmRequestType & USB_REQ_TYPE) == USB_REQ_CLASS) {
-        switch(req->bRequest) {
-        case MTP_REQ_RESET:
-            if(w_index == 0 && w_value == 0) {
-                FURI_LOG_I("MTP", "MTP_REQ_RESET");
-                if(!mtp || mtp->dev != dev) return usbd_fail;
-                furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventRxTx);
-                value = w_length;
-            }
-            break;
-        case MTP_REQ_CANCEL:
-            if(w_index == 0 && w_value == 0) {
-                FURI_LOG_I("MTP", "MTP_REQ_CANCEL");
-                if(mtp->state == MTPStateBusy) {
-                    mtp->state = MTPStateCanceled;
-                }
-                value = w_length;
-            }
-            break;
-        case MTP_REQ_GET_DEVICE_STATUS:
-            if(w_index == 0 && w_value == 0) {
-                FURI_LOG_I("MTP", "MTP_REQ_GET_DEVICE_STATUS");
-                struct mtp_device_status* status = (struct mtp_device_status*)req->data;
-                status->wLength = sizeof(*status);
-                if(mtp->state == MTPStateBusy) {
-                    status->wCode = 0x2019; // Device Busy
-                } else {
-                    status->wCode = 0x2001; // Device Ready
-                }
-                value = sizeof(*status);
-            }
-            break;
-        default:
-            FURI_LOG_W("MTP", "Unsupported CLASS request: bRequest=0x%02x", req->bRequest);
-            break;
-        }
+        value = mtp_handle_class_control(mtp, dev, req);
     }
 
     if(value >= 0) {
         if(value > w_length) {
             value = w_length;
         }
-        dev->driver->ep_write(0x00, req->data, value);
+        usbd_ep_write(dev, 0x00, req->data, value);
         return usbd_ack;
     }
 
@@ -134,10 +122,28 @@ void usb_mtp_txrx(usbd_device* dev, uint8_t event, uint8_t ep) {
     UNUSED(ep);
     UNUSED(event);
 
+    FURI_LOG_I("MTP", "USB Tx/Rx event");
+
     AppMTP* mtp = global_mtp;
     if(!mtp || mtp->dev != dev) return;
 
-    furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventRxTx);
+    if(ep == MTP_EP_OUT_ADDR) {
+        furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventTx);
+    } else if(ep == MTP_EP_IN_ADDR) {
+        furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventRx);
+    }
+}
+
+void usb_mtp_interrupt(usbd_device* dev, uint8_t event, uint8_t ep) {
+    UNUSED(ep);
+    UNUSED(event);
+
+    FURI_LOG_I("MTP", "USB Interrupt");
+
+    AppMTP* mtp = global_mtp;
+    if(!mtp || mtp->dev != dev) return;
+
+    furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventInterrupt);
 }
 
 usbd_respond usb_mtp_ep_config(usbd_device* dev, uint8_t cfg) {
@@ -162,8 +168,9 @@ usbd_respond usb_mtp_ep_config(usbd_device* dev, uint8_t cfg) {
         usbd_ep_config(dev, MTP_EP_INT_IN_ADDR, USB_EPTYPE_INTERRUPT, USB_MAX_INTERRUPT_SIZE);
         usbd_reg_endpoint(dev, MTP_EP_OUT_ADDR, usb_mtp_txrx);
         usbd_reg_endpoint(dev, MTP_EP_IN_ADDR, usb_mtp_txrx);
-        usbd_reg_endpoint(dev, MTP_EP_INT_IN_ADDR, usb_mtp_txrx);
+        usbd_reg_endpoint(dev, MTP_EP_INT_IN_ADDR, usb_mtp_interrupt);
         if(mtp != NULL) mtp->usb_connected = true;
+        //usbd_ep_write(dev, MTP_MAX_PACKET_SIZE, 0, 0);
         break;
     default:
         return usbd_fail;
@@ -177,6 +184,9 @@ void usb_mtp_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     if(dev == NULL) {
         FURI_LOG_E("MTP", "dev is NULL");
     }
+
+    // Disconnect the device first.
+    usbd_connect(dev, false);
 
     AppMTP* mtp = ctx;
     global_mtp = mtp;
@@ -235,7 +245,9 @@ void usb_mtp_wakeup(usbd_device* dev) {
     AppMTP* mtp = global_mtp;
     if(!mtp || mtp->dev != dev) return;
 
-    mtp->is_working = true;
+    FURI_LOG_I("MTP", "USB wakeup");
+
+    mtp->usb_connected = true;
     UNUSED(dev);
 }
 
@@ -243,6 +255,8 @@ void usb_mtp_suspend(usbd_device* dev) {
     AppMTP* mtp = global_mtp;
     if(!mtp || mtp->dev != dev) return;
 
-    mtp->is_working = false;
+    FURI_LOG_I("MTP", "USB suspend");
+
+    mtp->usb_connected = false;
     furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventReset);
 }
