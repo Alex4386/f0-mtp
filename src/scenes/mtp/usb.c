@@ -10,14 +10,16 @@
 #include "mtp.h"
 
 AppMTP* global_mtp;
+uint8_t last_ep;
 
 typedef enum {
     EventExit = 1 << 0,
     EventReset = 1 << 1,
-    EventTx = 1 << 2,
-    EventRx = 1 << 3,
-    EventInterrupt = 1 << 4,
-    EventAll = EventExit | EventReset | EventRx | EventTx | EventInterrupt,
+    EventRx = 1 << 2,
+    EventTx = 1 << 3,
+    EventRxOther = 1 << 4,
+    EventInterrupt = 1 << 5,
+    EventAll = EventExit | EventReset | EventRx | EventTx | EventRxOther | EventInterrupt,
 } MTPEvent;
 
 int32_t usb_mtp_worker(void* ctx) {
@@ -41,15 +43,14 @@ int32_t usb_mtp_worker(void* ctx) {
             FURI_LOG_W("MTP", "USB Tx event");
             // Handle MTP RX/TX data here
             // Implement the logic for processing MTP requests, sending responses, etc.
-
             mtp->write_pending = false;
         }
 
         if(flags & EventRx) {
             FURI_LOG_W("MTP", "USB Rx event");
 
-            int32_t readBytes = usbd_ep_read(dev, MTP_EP_IN_ADDR, buffer, MTP_MAX_PACKET_SIZE);
-            FURI_LOG_I("MTP", "Received %ld bytes", readBytes);
+            int32_t readBytes = usbd_ep_read(dev, MTP_EP_OUT_ADDR, buffer, MTP_MAX_PACKET_SIZE);
+            FURI_LOG_I("MTP", "Received %ld bytes on RX", readBytes);
 
             if(readBytes > 0) {
                 mtp_handle_bulk(mtp, buffer, readBytes);
@@ -57,6 +58,10 @@ int32_t usb_mtp_worker(void* ctx) {
 
             // Handle MTP RX/TX data here
             // Implement the logic for processing MTP requests, sending responses, etc.
+        }
+
+        if(flags & EventRxOther) {
+            FURI_LOG_W("MTP", "USB Rx Other event. ep: %02x", last_ep);
         }
 
         if(flags & EventInterrupt) {
@@ -89,7 +94,6 @@ usbd_respond usb_mtp_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_callba
 
     if(req->bRequest == USB_STD_GET_DESCRIPTOR) {
         if((w_value >> 8) == USB_DTYPE_STRING && (w_value & 0xff) == 0xee) {
-            FURI_LOG_I("MTP", "GET_DESCRIPTOR OS_STRING");
             value = (w_length < usb_mtp_os_string_len ? w_length : usb_mtp_os_string_len);
             memcpy(req->data, usb_mtp_os_string, value);
             return usbd_ack;
@@ -97,7 +101,6 @@ usbd_respond usb_mtp_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_callba
     } else if((req->bmRequestType & USB_REQ_TYPE) == USB_REQ_VENDOR) {
         if(req->bRequest == 1 && (req->bmRequestType & USB_EPDIR_IN) &&
            (w_index == 4 || w_index == 5)) {
-            FURI_LOG_I("MTP", "REQ_VENDOR - OS Descriptor");
             value =
                 (w_length < sizeof(mtp_ext_config_desc) ? w_length : sizeof(mtp_ext_config_desc));
             memcpy(req->data, &mtp_ext_config_desc, value);
@@ -122,15 +125,16 @@ void usb_mtp_txrx(usbd_device* dev, uint8_t event, uint8_t ep) {
     UNUSED(ep);
     UNUSED(event);
 
-    FURI_LOG_I("MTP", "USB Tx/Rx event");
-
     AppMTP* mtp = global_mtp;
     if(!mtp || mtp->dev != dev) return;
 
     if(ep == MTP_EP_OUT_ADDR) {
-        furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventTx);
-    } else if(ep == MTP_EP_IN_ADDR) {
         furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventRx);
+    } else if(ep == MTP_EP_IN_ADDR) {
+        furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventTx);
+    } else {
+        furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventRxOther);
+        last_ep = ep;
     }
 }
 

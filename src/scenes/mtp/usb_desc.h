@@ -12,8 +12,8 @@
 #define USB_CONF_VAL_MTP 1
 
 // Endpoint Addresses
-#define MTP_EP_IN_ADDR 0x01
-#define MTP_EP_OUT_ADDR 0x82
+#define MTP_EP_IN_ADDR 0x81
+#define MTP_EP_OUT_ADDR 0x02
 #define MTP_EP_INT_IN_ADDR 0x03
 
 #define MTP_MAX_PACKET_SIZE 64

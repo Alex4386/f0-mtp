@@ -19,6 +19,12 @@ typedef struct {
     bool session_open;
 } MTPSession;
 
+typedef struct FileHandle {
+    uint32_t handle;
+    char* path;
+    struct FileHandle* next;
+} FileHandle;
+
 typedef struct AppMTP {
     Submenu* menu;
     View* view;
@@ -36,6 +42,8 @@ typedef struct AppMTP {
     MTPSession session;
 
     bool write_pending;
+
+    FileHandle* handles;
 } AppMTP;
 
 AppMTP* MTP_alloc();

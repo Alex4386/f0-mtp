@@ -5,6 +5,10 @@
 #define MTP_VENDOR_EXTENSION_VERSION 100
 #define MTP_FUNCTIONAL_MODE 0x0
 
+#define MTP_TYPE_COMMAND 0x1
+#define MTP_TYPE_DATA 0x2
+#define MTP_TYPE_RESPONSE 0x3
+
 #define MTP_REQ_CANCEL 0x64
 #define MTP_REQ_GET_EXT_EVENT_DATA 0x65
 #define MTP_REQ_RESET 0x66
@@ -27,6 +31,7 @@
 #define MTP_OP_GET_DEVICE_PROP_VALUE 0x1015
 
 // MTP Response Codes
+#define MTP_RESP_UNKNOWN 0x2000
 #define MTP_RESP_OK 0x2001
 #define MTP_RESP_GENERAL_ERROR 0x2002
 #define MTP_RESP_SESSION_NOT_OPEN 0x2003
@@ -52,14 +57,9 @@
 #define MTP_RESP_CAPTURE_ALREADY_TERMINATED 0x2018
 #define MTP_RESP_DEVICE_BUSY 0x2019
 
-// Endpoint Addresses
-#define MTP_EP_IN_ADDR 0x01
-#define MTP_EP_OUT_ADDR 0x82
-#define MTP_EP_INT_IN_ADDR 0x03
-
 // Storage IDs
-#define INTERNAL_STORAGE_ID 0x00000001
-#define EXTERNAL_STORAGE_ID 0x00000001
+#define INTERNAL_STORAGE_ID 0x00010001
+#define EXTERNAL_STORAGE_ID 0x00020001
 
 // MTP Playback formats
 #define MTP_FORMAT_UNDEFINED 0x3000
@@ -86,9 +86,25 @@ typedef struct {
     uint64_t max_capacity;
     uint64_t free_space_in_bytes;
     uint32_t free_space_in_objects;
-    char storage_description[64];
-    char volume_identifier[32];
-} MTPStorageInfo;
+} MTPStorageInfoHeader;
+
+typedef struct ObjectInfoHeader {
+    uint32_t storage_id;
+    uint16_t format;
+    uint16_t protection_status;
+    uint32_t compressed_size;
+    uint16_t thumb_format;
+    uint32_t thumb_compressed_size;
+    uint32_t thumb_pix_width;
+    uint32_t thumb_pix_height;
+    uint32_t image_pix_width;
+    uint32_t image_pix_height;
+    uint32_t image_bit_depth;
+    uint32_t parent_object;
+    uint16_t association_type;
+    uint32_t association_desc;
+    uint32_t sequence_number;
+} ObjectInfoHeader;
 
 struct MTPHeader {
     uint32_t len; // 0
@@ -102,10 +118,14 @@ struct MTPContainer {
     uint32_t params[5]; // 12
 };
 
+extern uint16_t supported_operations[];
+extern uint16_t supported_device_properties[];
+extern uint16_t supported_playback_formats[];
+
 void OpenSession(AppMTP* mtp, uint32_t session_id);
 void CloseSession(AppMTP* mtp);
 void GetStorageIDs(AppMTP* mtp, uint32_t* storage_ids, uint32_t* count);
-void GetStorageInfo(AppMTP* mtp, uint32_t storage_id, MTPStorageInfo* info);
+int GetStorageInfo(AppMTP* mtp, uint32_t storage_id, uint8_t* buf);
 uint32_t CreateObject(AppMTP* mtp, uint32_t parent_handle, const char* name, bool is_directory);
 uint32_t ReadObject(AppMTP* mtp, uint32_t handle, uint8_t* buffer, uint32_t size);
 void WriteObject(AppMTP* mtp, uint32_t handle, uint8_t* data, uint32_t size);
@@ -128,4 +148,13 @@ void send_mtp_response_buffer(
     uint32_t size);
 int BuildDeviceInfo(uint8_t* buffer);
 void WriteMTPString(uint8_t* buffer, const char* str, uint16_t* length);
+void WriteMTPBEString(uint8_t* buffer, const char* str, uint16_t* length);
 void send_device_info(AppMTP* mtp, uint32_t transaction_id);
+void send_storage_ids(AppMTP* mtp, uint32_t transaction_id);
+
+void send_device_prop_value(AppMTP* mtp, uint32_t transaction_id, uint32_t prop_code);
+void send_device_prop_desc(AppMTP* mtp, uint32_t transaction_id, uint32_t prop_code);
+int GetDevicePropValue(uint32_t prop_code, uint8_t* buffer);
+int GetDevicePropDesc(uint32_t prop_code, uint8_t* buffer);
+int GetObjectHandles(AppMTP* mtp, uint32_t storage_id, uint32_t association, uint8_t* buffer);
+int GetObjectInfo(AppMTP* mtp, uint32_t handle, uint8_t* buffer);
