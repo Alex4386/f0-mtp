@@ -1,16 +1,6 @@
-<h1 align="center">Flipper Zero: Application Template</h1>
-
-## How to use this template
-
-1. Setup the repository by clicking the `Use this template` button on the top of the repository. Fill in the data if needed.
-2. Update `README.md`'s upstream url with your repository's url.
-3. Add `LICENSE` file with your own license.
-4. Continue on [Setup Build environment](#setup-build-environment).
-5. Change `AppID`
+<h1 align="center">Flipper Zero: MTP</h1>
 
 ## Build Status
-
-<!-- Replace the https://github.com/Alex4386/f0-mtp to your own repo after using template! -->
 
 - **Latest Release**: [Download](https://github.com/Alex4386/f0-mtp/releases/latest)
 - **Latest Nightly**: [Download](https://github.com/Alex4386/f0-mtp/actions/workflows/nightly.yml) _(GitHub Login Required)_
@@ -19,39 +9,20 @@
 | :-----------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------: |
 | ![Nightly Build](https://github.com/Alex4386/f0-mtp/actions/workflows/nightly.yml/badge.svg) | ![Release Build](https://github.com/Alex4386/f0-mtp/actions/workflows/release.yml/badge.svg) |
 
-## Setup Build environment
+## What is this?
+`f0-mtp` is a application that implements [`MTP (Media Transfer Protocol)` defined by `USB-IF`](https://www.usb.org/document-library/media-transfer-protocol-v11-spec-and-mtp-v11-adopters-agreement) on Flipper Zero.  
+This allows you to access the Flipper Zero's internal and SD card storages from your computer without the need of any additional drivers like [`HID-File-Transfer`](https://github.com/Kavakuo/HID-File-Transfer).  
+  
+If your computer can handle Android devices, it should be able to handle Flipper Zero as well with this application.  
+  
 
-### Build Instruction
+### Features
+* Access Internal and SD card storages
+* List files and directories
+   - Navigate directories (Currently has a bug that file/directory name is not shown correctly)
 
-1. Install `ufbt`:
-   ```bash
-   pip3 install ufbt
-   ```
-2. Clone this repository and enter the repository root.
-3. Run `ufbt update` to update the SDK for your flipper
-   - If you are using custom firmware, You should switch SDK. Here is the example for `unleashed` firmware:
-     ```bash
-     ufbt update --index-url=https://up.unleashedflip.com/directory.json
-     ```
-   - If you want to use different release channel, You can run update to that channel too. Here is the example for `dev` channel (`dev`, `rc`, `release` are supported):
-     ```bash
-     ufbt update --channel=dev
-     ```
-4. Run `ufbt` in the repository root:
-   ```bash
-   ufbt
-   ```
-5. Compiled binary is now available at `./dist/` directory.
+## How to build
+See [HOW_TO_BUILD.md](HOW_TO_BUILD.md) for more information.  
 
-### Setup Visual Studio Code
-
-> [!WARNING]
-> This command will overwrite your `.vscode` directory and `.gitignore` on your root directory.
-> **Make sure to backup your changes before running this command.**
-
-1. Suppose your build environment is ready.
-2. Run `ufbt vscode_dist` to generate Visual Studio Code config.
-
-### What Next?
-
-See [KICKSTART.md](KICKSTART.md) to see how to start building and setting up the repo for the first time! (This includes changing `AppID` and required steps to make your app **WORK**)
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

@@ -277,9 +277,13 @@ int list_and_issue_handles(
             FURI_LOG_I("MTP", "Found file: %s", file_name);
         }
 
+        // implement this way since strcat is unavailable
+        char* ptr = full_path;
         strcpy(full_path, base_path);
-        strcat(full_path, "/");
-        strcat(full_path, file_name);
+        ptr += strlen(base_path);
+        strcpy(ptr, "/");
+        ptr++;
+        strcpy(ptr, file_name);
 
         FURI_LOG_I("MTP", "Full path: %s", full_path);
 
