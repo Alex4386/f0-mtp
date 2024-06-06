@@ -24,5 +24,9 @@ If your computer can handle Android devices, it should be able to handle Flipper
 ## How to build
 See [HOW_TO_BUILD.md](HOW_TO_BUILD.md) for more information.  
 
+## Special Thanks
+- [viveris/uMTP-Responder](https://github.com/viveris/uMTP-Responder)
+- [yoonghm/MTP](https://github.com/yoonghm/MTP)
+
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
