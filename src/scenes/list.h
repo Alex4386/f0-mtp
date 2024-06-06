@@ -12,6 +12,4 @@
  * 3. Include the scene in the list of scenes in main.h.
  */
 
-SCENE_ACTION(Home)
-SCENE_ACTION(About)
 SCENE_ACTION(MTP)

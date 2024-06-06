@@ -2,7 +2,7 @@
 #include <gui/modules/submenu.h>
 #include "../../main.h"
 #include "main.h"
-#include <demo_app_icons.h>
+#include <f0_mtp_icons.h>
 #include "usb.h"
 #include "usb_desc.h"
 
@@ -42,11 +42,9 @@ void MTP_on_draw(Canvas* canvas, void* context) {
     if(usb_connected) {
         canvas_set_bitmap_mode(canvas, true);
         canvas_draw_icon(canvas, 0, 14, &I_DFU);
-        canvas_draw_icon(canvas, 2, 2, &I_Pin_back_arrow);
         canvas_set_font(canvas, FontPrimary);
         canvas_draw_str(canvas, 43, 10, "MTP Connection");
         canvas_set_font(canvas, FontSecondary);
-        canvas_draw_str(canvas, 15, 10, "Back");
         canvas_draw_str(canvas, 3, 22, "Disconnect or");
         canvas_draw_icon(canvas, 28, 23, &I_Pin_back_arrow);
         canvas_draw_str(canvas, 3, 31, "Press");
@@ -57,7 +55,7 @@ void MTP_on_draw(Canvas* canvas, void* context) {
         canvas_draw_str(canvas, 10, 25, "Plug me into computer!");
         canvas_draw_icon(canvas, 2, 2, &I_Pin_back_arrow);
         canvas_set_font(canvas, FontSecondary);
-        canvas_draw_str(canvas, 15, 10, "Back");
+        canvas_draw_str(canvas, 15, 10, "Exit");
         canvas_draw_str(canvas, 61, 41, "Waiting for USB");
         canvas_draw_str(canvas, 72, 50, "Connection...");
     }

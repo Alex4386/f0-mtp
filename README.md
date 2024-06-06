@@ -10,14 +10,14 @@
 
 ## Build Status
 
-<!-- Replace the https://github.com/Alex4386/f0-template to your own repo after using template! -->
+<!-- Replace the https://github.com/Alex4386/f0-mtp to your own repo after using template! -->
 
-- **Latest Release**: [Download](https://github.com/Alex4386/f0-template/releases/latest)
-- **Latest Nightly**: [Download](https://github.com/Alex4386/f0-template/actions/workflows/nightly.yml) _(GitHub Login Required)_
+- **Latest Release**: [Download](https://github.com/Alex4386/f0-mtp/releases/latest)
+- **Latest Nightly**: [Download](https://github.com/Alex4386/f0-mtp/actions/workflows/nightly.yml) _(GitHub Login Required)_
 
 |                                           Nightly Build                                           |                                           Release Build                                           |
 | :-----------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------: |
-| ![Nightly Build](https://github.com/Alex4386/f0-template/actions/workflows/nightly.yml/badge.svg) | ![Release Build](https://github.com/Alex4386/f0-template/actions/workflows/release.yml/badge.svg) |
+| ![Nightly Build](https://github.com/Alex4386/f0-mtp/actions/workflows/nightly.yml/badge.svg) | ![Release Build](https://github.com/Alex4386/f0-mtp/actions/workflows/release.yml/badge.svg) |
 
 ## Setup Build environment
 
