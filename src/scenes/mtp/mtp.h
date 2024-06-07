@@ -103,7 +103,6 @@ typedef struct ObjectInfoHeader {
     uint32_t parent_object;
     uint16_t association_type;
     uint32_t association_desc;
-    uint32_t sequence_number;
 } ObjectInfoHeader;
 
 struct MTPHeader {
@@ -112,6 +111,16 @@ struct MTPHeader {
     uint16_t op; // 6
     uint32_t transaction_id; // 8
 };
+
+typedef struct MTPDataPersistence {
+    uint32_t left_bytes;
+    uint8_t* global_buffer;
+    uint32_t buffer_offset;
+
+    uint16_t op;
+    uint32_t transaction_id;
+    uint32_t params[5];
+} MTPDataPersistence;
 
 struct MTPContainer {
     struct MTPHeader header; // 0
@@ -131,7 +140,10 @@ uint32_t ReadObject(AppMTP* mtp, uint32_t handle, uint8_t* buffer, uint32_t size
 void WriteObject(AppMTP* mtp, uint32_t handle, uint8_t* data, uint32_t size);
 bool DeleteObject(AppMTP* mtp, uint32_t handle);
 
-void mtp_handle_bulk(AppMTP* mtp, uint8_t* buffer, int32_t length);
+void mtp_handle_bulk(AppMTP* mtp, uint8_t* buffer, uint32_t length);
+void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container);
+void handle_mtp_data_packet(AppMTP* mtp, uint8_t* buffer, int32_t length, bool cont);
+void handle_mtp_response(AppMTP* mtp, struct MTPHeader* container);
 int mtp_handle_class_control(AppMTP* mtp, usbd_device* dev, usbd_ctlreq* req);
 void send_mtp_response(
     AppMTP* mtp,
@@ -147,8 +159,9 @@ void send_mtp_response_buffer(
     uint8_t* buffer,
     uint32_t size);
 int BuildDeviceInfo(uint8_t* buffer);
+
+char* ReadMTPString(uint8_t* buffer);
 void WriteMTPString(uint8_t* buffer, const char* str, uint16_t* length);
-void WriteMTPBEString(uint8_t* buffer, const char* str, uint16_t* length);
 void send_device_info(AppMTP* mtp, uint32_t transaction_id);
 void send_storage_ids(AppMTP* mtp, uint32_t transaction_id);
 
@@ -158,3 +171,8 @@ int GetDevicePropValue(uint32_t prop_code, uint8_t* buffer);
 int GetDevicePropDesc(uint32_t prop_code, uint8_t* buffer);
 int GetObjectHandles(AppMTP* mtp, uint32_t storage_id, uint32_t association, uint8_t* buffer);
 int GetObjectInfo(AppMTP* mtp, uint32_t handle, uint8_t* buffer);
+void GetObject(AppMTP* mtp, uint32_t transaction_id, uint32_t handle);
+char* get_base_path_from_storage_id(uint32_t storage_id);
+char* get_path_from_handle(AppMTP* mtp, uint32_t handle);
+uint32_t issue_object_handle(AppMTP* mtp, char* path);
+void handle_mtp_data_complete(AppMTP* mtp);

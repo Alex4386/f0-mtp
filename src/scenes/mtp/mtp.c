@@ -33,14 +33,213 @@ uint16_t supported_playback_formats[] = {
     MTP_FORMAT_ASSOCIATION,
 };
 
-void mtp_handle_bulk(AppMTP* mtp, uint8_t* buffer, int32_t length) {
+void merge_path(char* target, char* base, char* name) {
+    // implement this way since strcat is unavailable
+
+    char* ptr = target;
+    strcpy(target, base);
+    ptr += strlen(base);
+    strcpy(ptr, "/");
+    ptr++;
+    strcpy(ptr, name);
+}
+
+// temporary storage for buffer
+MTPDataPersistence persistence;
+
+void mtp_handle_bulk(AppMTP* mtp, uint8_t* buffer, uint32_t length) {
     UNUSED(mtp);
+    if(persistence.left_bytes > 0) {
+        FURI_LOG_I("MTP", "Left bytes: %ld", persistence.left_bytes);
+        handle_mtp_data_packet(mtp, buffer, length, 1);
+        return;
+    }
 
     if(length < 12) {
         FURI_LOG_E("MTP", "Invalid MTP packet");
         return;
     }
-    struct MTPContainer* container = (struct MTPContainer*)buffer;
+
+    struct MTPHeader* header = (struct MTPHeader*)buffer;
+    uint16_t type = header->type;
+
+    if(type == MTP_TYPE_COMMAND) {
+        struct MTPContainer* container = (struct MTPContainer*)buffer;
+        handle_mtp_command(mtp, container);
+    } else if(type == MTP_TYPE_DATA) {
+        if(header->len > length) {
+            persistence.left_bytes = header->len;
+        }
+        handle_mtp_data_packet(mtp, buffer, length, 0);
+    } else if(type == MTP_TYPE_RESPONSE) {
+        handle_mtp_response(mtp, header);
+    } else {
+        FURI_LOG_W("MTP", "Unsupported MTP packet type: %d", type);
+    }
+}
+
+void setup_persistence(struct MTPContainer* container) {
+    persistence.transaction_id = container->header.transaction_id;
+    memcpy(persistence.params, container->params, sizeof(uint32_t) * 5);
+}
+
+void handle_mtp_data_packet(AppMTP* mtp, uint8_t* buffer, int32_t length, bool cont) {
+    UNUSED(mtp);
+    uint8_t* ptr = buffer;
+    if(!cont) {
+        struct MTPHeader* header = (struct MTPHeader*)buffer;
+
+        if(header->transaction_id != persistence.transaction_id) {
+            // the params value can not be trusted.
+            // reset the params
+            for(int i = 0; i < 5; i++) {
+                persistence.params[i] = 0;
+            }
+        }
+
+        persistence.global_buffer = NULL;
+        uint32_t transaction_id = header->transaction_id;
+        persistence.op = header->op;
+
+        FURI_LOG_I("MTP", "Handling MTP data: 0x%04x", header->op);
+        FURI_LOG_I("MTP", "Transaction ID: %ld", transaction_id);
+        FURI_LOG_I("MTP", "Length: %ld", length);
+
+        ptr = (uint8_t*)buffer + sizeof(struct MTPHeader);
+
+        switch(header->op) {
+        case MTP_OP_SEND_OBJECT_INFO: {
+            persistence.global_buffer = malloc(sizeof(uint8_t) * 256);
+            persistence.buffer_offset = 0;
+            break;
+        }
+        }
+    }
+
+    if(persistence.global_buffer != NULL) {
+        memcpy(persistence.global_buffer + persistence.buffer_offset, ptr, length);
+        persistence.buffer_offset += length;
+
+        if(persistence.left_bytes > 0) {
+            persistence.left_bytes -= length;
+        }
+
+        FURI_LOG_I("MTP", "Buffer offset: %ld", persistence.buffer_offset);
+        FURI_LOG_I("MTP", "Left bytes: %ld", persistence.left_bytes);
+
+        if(persistence.left_bytes == 0) {
+            handle_mtp_data_complete(mtp);
+        }
+    }
+}
+
+void handle_mtp_data_complete(AppMTP* mtp) {
+    UNUSED(mtp);
+    switch(persistence.op) {
+    case MTP_OP_SEND_OBJECT_INFO: {
+        struct ObjectInfoHeader* info =
+            (struct ObjectInfoHeader*)(persistence.global_buffer + sizeof(struct MTPHeader));
+
+        uint8_t* ptr =
+            persistence.global_buffer + sizeof(struct MTPHeader) + sizeof(struct ObjectInfoHeader);
+        ptr += 4;
+        char* name = ReadMTPString(ptr);
+
+        // if the name is blank, generate random name
+        if(*name == 0) {
+            char* random_name = malloc(sizeof(char) * 10);
+            strcpy(random_name, "file_");
+            int random = rand() % 1000;
+            char random_str[4];
+            itoa(random, random_str, 10);
+            strcpy(random_name + 5, random_str);
+            name = random_name;
+        }
+
+        FURI_LOG_I("MTP", "Creating object: %s", name);
+
+        uint32_t storage_id = persistence.params[0];
+        uint32_t parent = persistence.params[1];
+
+        char* base_path = get_base_path_from_storage_id(storage_id);
+        if(base_path == NULL) {
+            FURI_LOG_E("MTP", "Invalid storage ID: %ld", storage_id);
+            send_mtp_response(
+                mtp, 3, MTP_RESP_INVALID_STORAGE_ID, persistence.transaction_id, NULL);
+            break;
+        }
+
+        if(parent != 0xffffffff) {
+            base_path = get_path_from_handle(mtp, parent);
+            if(base_path == NULL) {
+                FURI_LOG_E("MTP", "Invalid parent handle: %ld", parent);
+                send_mtp_response(
+                    mtp, 3, MTP_RESP_INVALID_OBJECT_HANDLE, persistence.transaction_id, NULL);
+                break;
+            }
+        }
+
+        char* full_path = malloc(sizeof(char) * 256);
+        merge_path(full_path, base_path, name);
+
+        FURI_LOG_I("MTP", "Format: %04x", info->format);
+
+        bool is_dir = info->format == MTP_FORMAT_ASSOCIATION;
+        if(is_dir) {
+            if(!storage_dir_exists(mtp->storage, full_path)) {
+                if(!storage_simply_mkdir(mtp->storage, full_path)) {
+                    FURI_LOG_E("MTP", "Failed to create directory: %s", full_path);
+                    send_mtp_response(
+                        mtp, 3, MTP_RESP_GENERAL_ERROR, persistence.transaction_id, NULL);
+                    free(full_path);
+                    break;
+                }
+            }
+        } else {
+            if(!storage_file_exists(mtp->storage, full_path)) {
+                // create file
+                File* file = storage_file_alloc(mtp->storage);
+                if(!storage_file_open(file, full_path, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
+                    FURI_LOG_E("MTP", "Failed to create file: %s", full_path);
+                    send_mtp_response(
+                        mtp, 3, MTP_RESP_GENERAL_ERROR, persistence.transaction_id, NULL);
+                    storage_file_free(file);
+                    free(full_path);
+                    break;
+                }
+
+                storage_file_free(file);
+            }
+        }
+
+        uint32_t handle = issue_object_handle(mtp, full_path);
+        persistence.params[2] = handle;
+
+        free(name);
+        free(full_path);
+        send_mtp_response(mtp, 3, MTP_RESP_OK, persistence.transaction_id, persistence.params);
+
+        break;
+    }
+    default:
+        FURI_LOG_W("MTP", "Unsupported MTP operation in bulk transfer: 0x%04x", persistence.op);
+        send_mtp_response(mtp, 3, MTP_RESP_UNKNOWN, persistence.transaction_id, NULL);
+        break;
+    }
+
+    free(persistence.global_buffer);
+    persistence.global_buffer = NULL;
+}
+
+void handle_mtp_response(AppMTP* mtp, struct MTPHeader* header) {
+    UNUSED(mtp);
+    FURI_LOG_I("MTP", "Handling MTP response: 0x%04x", header->op);
+    FURI_LOG_I("MTP", "Transaction ID: %ld", header->transaction_id);
+    FURI_LOG_I("MTP", "Has Data: %d", persistence.global_buffer != NULL);
+    FURI_LOG_I("MTP", "Data length: %ld", persistence.buffer_offset);
+}
+
+void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
     uint16_t mtp_op = container->header.op;
     FURI_LOG_I("MTP", "Handling MTP operation: 0x%04x", mtp_op);
 
@@ -107,7 +306,11 @@ void mtp_handle_bulk(AppMTP* mtp, uint8_t* buffer, int32_t length) {
 
         if(length < 0) {
             send_mtp_response(
-                mtp, 3, MTP_RESP_INVALID_OBJECT_HANDLE, container->header.transaction_id, NULL);
+                mtp,
+                MTP_TYPE_RESPONSE,
+                MTP_RESP_INVALID_OBJECT_HANDLE,
+                container->header.transaction_id,
+                NULL);
             break;
         }
 
@@ -138,12 +341,14 @@ void mtp_handle_bulk(AppMTP* mtp, uint8_t* buffer, int32_t length) {
     // Handle bulk transfer specific operations
     case MTP_OP_SEND_OBJECT_INFO:
         FURI_LOG_I("MTP", "SendObjectInfo operation");
-        // Process the SendObjectInfo operation
+        setup_persistence(container);
         break;
-    case MTP_OP_GET_OBJECT:
+    case MTP_OP_GET_OBJECT: {
         FURI_LOG_I("MTP", "GetObject operation");
-        // Process the GetObject operation
+        GetObject(mtp, container->header.transaction_id, container->params[0]);
+
         break;
+    }
     // Handle other bulk operations here...
     default:
         FURI_LOG_W("MTP", "Unsupported MTP operation in bulk transfer: 0x%04x", mtp_op);
@@ -241,17 +446,24 @@ uint32_t issue_object_handle(AppMTP* mtp, char* path) {
     return handle;
 }
 
+char* get_base_path_from_storage_id(uint32_t storage_id) {
+    if(storage_id == INTERNAL_STORAGE_ID) {
+        return STORAGE_INT_PATH_PREFIX;
+    } else if(storage_id == EXTERNAL_STORAGE_ID) {
+        return STORAGE_EXT_PATH_PREFIX;
+    }
+    return NULL;
+}
+
 int list_and_issue_handles(
     AppMTP* mtp,
     uint32_t storage_id,
     uint32_t association,
     uint32_t* handles) {
     Storage* storage = mtp->storage;
-    char* base_path = "";
-    if(storage_id == INTERNAL_STORAGE_ID) {
-        base_path = STORAGE_INT_PATH_PREFIX;
-    } else if(storage_id == EXTERNAL_STORAGE_ID) {
-        base_path = STORAGE_EXT_PATH_PREFIX;
+    char* base_path = get_base_path_from_storage_id(storage_id);
+    if(base_path == NULL) {
+        base_path = "";
     }
 
     File* dir = storage_file_alloc(storage);
@@ -260,10 +472,12 @@ int list_and_issue_handles(
         storage_dir_open(dir, base_path);
     } else {
         char* path = get_path_from_handle(mtp, association);
+        FURI_LOG_I("MTP", "Association path: %s", path);
         if(path == NULL) {
             return 0;
         }
         storage_dir_open(dir, path);
+        base_path = path;
     }
 
     int count = 0;
@@ -277,14 +491,7 @@ int list_and_issue_handles(
             FURI_LOG_I("MTP", "Found file: %s", file_name);
         }
 
-        // implement this way since strcat is unavailable
-        char* ptr = full_path;
-        strcpy(full_path, base_path);
-        ptr += strlen(base_path);
-        strcpy(ptr, "/");
-        ptr++;
-        strcpy(ptr, file_name);
-
+        merge_path(full_path, base_path, file_name);
         FURI_LOG_I("MTP", "Full path: %s", full_path);
 
         uint32_t handle = issue_object_handle(mtp, full_path);
@@ -299,14 +506,60 @@ int list_and_issue_handles(
     FURI_LOG_I("MTP", "Association: %ld", association);
     FURI_LOG_I("MTP", "Number of objects: %d", count);
 
+    storage_dir_close(dir);
     storage_file_free(dir);
     free(file_name);
     free(full_path);
     return count;
 }
 
+void GetObject(AppMTP* mtp, uint32_t transaction_id, uint32_t handle) {
+    char* path = get_path_from_handle(mtp, handle);
+    if(path == NULL) {
+        send_mtp_response(
+            mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_OBJECT_HANDLE, transaction_id, NULL);
+        return;
+    }
+
+    FURI_LOG_I("MTP", "Getting object: %s", path);
+
+    Storage* storage = mtp->storage;
+    File* file = storage_file_alloc(storage);
+    if(!storage_file_open(file, path, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        FURI_LOG_E("MTP", "Failed to open file: %s", path);
+        send_mtp_response(
+            mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_OBJECT_HANDLE, transaction_id, NULL);
+        return;
+    }
+
+    uint8_t* buffer = malloc(sizeof(uint8_t) * MTP_MAX_PACKET_SIZE);
+    while(true) {
+        FURI_LOG_I("MTP", "Reading file %s", path);
+        uint32_t read = storage_file_read(file, buffer, MTP_MAX_PACKET_SIZE);
+
+        FURI_LOG_I("MTP", "Read %ld bytes", read);
+
+        send_mtp_response_buffer(
+            mtp, MTP_TYPE_DATA, MTP_OP_GET_OBJECT, transaction_id, buffer, read);
+
+        if(read < MTP_MAX_PACKET_SIZE) {
+            FURI_LOG_I("MTP", "End of file reached");
+
+            break;
+        }
+    }
+
+    send_mtp_response(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL);
+
+    storage_file_close(file);
+    storage_file_free(file);
+    free(buffer);
+}
+
 int GetObjectInfo(AppMTP* mtp, uint32_t handle, uint8_t* buffer) {
     ObjectInfoHeader* header = (ObjectInfoHeader*)buffer;
+    uint8_t* ptr = buffer + sizeof(ObjectInfoHeader);
+
     char* path = get_path_from_handle(mtp, handle);
     if(path == NULL) {
         return -1;
@@ -322,24 +575,42 @@ int GetObjectInfo(AppMTP* mtp, uint32_t handle, uint8_t* buffer) {
     uint16_t length;
 
     FileInfo fileinfo;
-    storage_common_stat(storage, path, &fileinfo);
+    FS_Error err = storage_common_stat(storage, path, &fileinfo);
+    if(err != FSE_OK) {
+        FURI_LOG_E("MTP", "Failed to get file info: %s", filesystem_api_error_get_desc(err));
+        return -1;
+    }
 
     if(memcmp(path, STORAGE_INT_PATH_PREFIX, strlen(STORAGE_INT_PATH_PREFIX)) == 0) {
+        FURI_LOG_I("MTP", "Object in Internal storage");
         header->storage_id = INTERNAL_STORAGE_ID;
     } else if(memcmp(path, STORAGE_EXT_PATH_PREFIX, strlen(STORAGE_EXT_PATH_PREFIX)) == 0) {
+        FURI_LOG_I("MTP", "Object in External storage");
         header->storage_id = EXTERNAL_STORAGE_ID;
     } else {
         return -1;
     }
 
     if(file_info_is_dir(&fileinfo)) {
+        FURI_LOG_I("MTP", "Directory");
+
         header->format = MTP_FORMAT_ASSOCIATION;
         header->association_type = 0x0001; // Generic folder
     } else {
+        FURI_LOG_I("MTP", "Undefined type");
+
         header->format = MTP_FORMAT_UNDEFINED;
     }
 
-    header->compressed_size = 0;
+    header->compressed_size = fileinfo.size;
+
+    header->thumb_format = 0;
+    header->thumb_compressed_size = 0;
+    header->thumb_pix_width = 0;
+    header->thumb_pix_height = 0;
+    header->image_pix_width = 0;
+    header->image_pix_height = 0;
+    header->image_bit_depth = 0;
 
     /*
     // is on root directory (/int or /ext)
@@ -356,25 +627,45 @@ int GetObjectInfo(AppMTP* mtp, uint32_t handle, uint8_t* buffer) {
     }
     */
 
-    uint8_t* ptr = buffer + sizeof(ObjectInfoHeader);
-
     char* file_name = strrchr(path, '/');
     FURI_LOG_I("MTP", "File name: %s", file_name + 1);
 
     WriteMTPString(ptr, file_name + 1, &length);
     ptr += length;
 
-    // get last modified
-    WriteMTPString(ptr, "20231222T190925", &length);
+    // get created
+    WriteMTPString(ptr, "20240608T010702", &length);
     ptr += length;
 
     // get last modified
-    WriteMTPString(ptr, "20231222T190925", &length);
+    WriteMTPString(ptr, "20240608T010702", &length);
+    ptr += length;
+
+    // get keywords
+    WriteMTPString(ptr, "", &length);
     ptr += length;
 
     storage_file_free(file);
 
     return ptr - buffer;
+}
+
+char* ReadMTPString(uint8_t* buffer) {
+    int len16 = *(uint8_t*)buffer;
+    if(len16 == 0) {
+        return "";
+    }
+
+    char* str = malloc(sizeof(char) * len16);
+
+    uint8_t* base = buffer + 1;
+    uint16_t* ptr = (uint16_t*)base;
+
+    for(int i = 0; i < len16; i++) {
+        str[i] = *ptr++;
+    }
+
+    return str;
 }
 
 int GetNumObjects(AppMTP* mtp, uint32_t storage_id, uint32_t association) {
@@ -735,6 +1026,16 @@ int GetStorageInfo(AppMTP* mtp, uint32_t storage_id, uint8_t* buf) {
 void WriteMTPString(uint8_t* buffer, const char* str, uint16_t* length) {
     uint8_t* ptr = buffer;
     uint8_t str_len = strlen(str);
+
+    // extra handling for empty string
+    if(str_len == 0) {
+        *ptr = 0x00;
+
+        // that's it!
+        *length = 1;
+        return;
+    }
+
     *ptr = str_len + 1; // Length byte (number of characters including the null terminator)
     ptr++;
     while(*str) {
@@ -743,6 +1044,7 @@ void WriteMTPString(uint8_t* buffer, const char* str, uint16_t* length) {
     }
     *ptr++ = 0x00; // Null terminator (UTF-16LE)
     *ptr++ = 0x00;
+
     *length = ptr - buffer;
 }
 
