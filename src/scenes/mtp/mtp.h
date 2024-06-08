@@ -24,9 +24,10 @@
 #define MTP_OP_GET_OBJECT_HANDLES 0x1007
 #define MTP_OP_GET_OBJECT_INFO 0x1008
 #define MTP_OP_GET_OBJECT 0x1009
+
+#define MTP_OP_DELETE_OBJECT 0x100B
 #define MTP_OP_SEND_OBJECT_INFO 0x100C
 #define MTP_OP_SEND_OBJECT 0x100D
-#define MTP_OP_DELETE_OBJECT 0x100B
 #define MTP_OP_GET_DEVICE_PROP_DESC 0x1014
 #define MTP_OP_GET_DEVICE_PROP_VALUE 0x1015
 
@@ -135,9 +136,6 @@ void OpenSession(AppMTP* mtp, uint32_t session_id);
 void CloseSession(AppMTP* mtp);
 void GetStorageIDs(AppMTP* mtp, uint32_t* storage_ids, uint32_t* count);
 int GetStorageInfo(AppMTP* mtp, uint32_t storage_id, uint8_t* buf);
-uint32_t CreateObject(AppMTP* mtp, uint32_t parent_handle, const char* name, bool is_directory);
-uint32_t ReadObject(AppMTP* mtp, uint32_t handle, uint8_t* buffer, uint32_t size);
-void WriteObject(AppMTP* mtp, uint32_t handle, uint8_t* data, uint32_t size);
 bool DeleteObject(AppMTP* mtp, uint32_t handle);
 
 void mtp_handle_bulk(AppMTP* mtp, uint8_t* buffer, uint32_t length);

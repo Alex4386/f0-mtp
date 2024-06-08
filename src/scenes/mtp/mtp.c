@@ -327,6 +327,15 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
             mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, container->header.transaction_id, NULL, 0);
         break;
     }
+    case MTP_OP_DELETE_OBJECT:
+        FURI_LOG_I("MTP", "DeleteObject operation");
+        if(DeleteObject(mtp, container->params[0])) {
+            send_mtp_response(mtp, 3, MTP_RESP_OK, container->header.transaction_id, NULL);
+        } else {
+            send_mtp_response(
+                mtp, 3, MTP_RESP_INVALID_OBJECT_HANDLE, container->header.transaction_id, NULL);
+        }
+        break;
 
     case MTP_OP_GET_DEVICE_PROP_VALUE:
         FURI_LOG_I("MTP", "GetDevicePropValue operation");
@@ -1061,36 +1070,22 @@ void WriteMTPBEString(uint8_t* buffer, const char* str, uint16_t* length) {
     *length = ptr - buffer;
 }
 
-uint32_t CreateObject(AppMTP* mtp, uint32_t parent_handle, const char* name, bool is_directory) {
-    UNUSED(mtp);
-    MTPObject new_object;
-    UNUSED(new_object);
-    UNUSED(parent_handle);
-    UNUSED(name);
-    UNUSED(is_directory);
-
-    FURI_LOG_I("MTP", "Creating object %s", name);
-    return 0;
-}
-
-uint32_t ReadObject(AppMTP* mtp, uint32_t handle, uint8_t* buffer, uint32_t size) {
-    UNUSED(mtp);
-    UNUSED(buffer);
-    UNUSED(size);
-    FURI_LOG_I("MTP", "Reading object %ld", handle);
-
-    return 0;
-}
-
-void WriteObject(AppMTP* mtp, uint32_t handle, uint8_t* data, uint32_t size) {
-    UNUSED(mtp);
-    UNUSED(data);
-    UNUSED(size);
-    FURI_LOG_I("MTP", "Writing object %ld", handle);
-}
-
 bool DeleteObject(AppMTP* mtp, uint32_t handle) {
     UNUSED(mtp);
     FURI_LOG_I("MTP", "Deleting object %ld", handle);
+
+    char* path = get_path_from_handle(mtp, handle);
+    if(path == NULL) {
+        return false;
+    }
+
+    if(!storage_file_exists(mtp->storage, path)) {
+        return false;
+    }
+
+    if(storage_common_remove(mtp->storage, path) != FSE_OK) {
+        return false;
+    }
+
     return true;
 }
