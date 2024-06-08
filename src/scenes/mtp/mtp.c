@@ -541,21 +541,41 @@ void GetObject(AppMTP* mtp, uint32_t transaction_id, uint32_t handle) {
         return;
     }
 
+    // I am a big dumbdumb
+    bool is_first = true;
     uint8_t* buffer = malloc(sizeof(uint8_t) * MTP_MAX_PACKET_SIZE);
-    while(true) {
+    size_t total_size = storage_file_size(file);
+    size_t left_size = total_size;
+
+    while(left_size > 0) {
+        uint8_t* payload_ptr = buffer;
+        size_t read_size = MTP_MAX_PACKET_SIZE;
+        if(is_first) {
+            FURI_LOG_I("MTP", "Sending MTP Header for GetObject req for file %s", path);
+            read_size -= sizeof(struct MTPHeader);
+            struct MTPHeader hdr = {
+                .len = total_size + sizeof(struct MTPHeader),
+                .type = MTP_TYPE_DATA,
+                .op = MTP_OP_GET_OBJECT,
+                .transaction_id = transaction_id,
+            };
+
+            memcpy(buffer, &hdr, sizeof(struct MTPHeader));
+            payload_ptr += sizeof(struct MTPHeader);
+            read_size -= sizeof(struct MTPHeader);
+            is_first = false;
+        }
+
         FURI_LOG_I("MTP", "Reading file %s", path);
-        uint32_t read = storage_file_read(file, buffer, MTP_MAX_PACKET_SIZE);
+        uint32_t read = storage_file_read(file, payload_ptr, read_size);
+
+        size_t actual_packet_size = (payload_ptr - buffer) + // size of header (if exist),
+                                    read;
 
         FURI_LOG_I("MTP", "Read %ld bytes", read);
+        usbd_ep_write(mtp->dev, MTP_EP_IN_ADDR, buffer, actual_packet_size);
 
-        send_mtp_response_buffer(
-            mtp, MTP_TYPE_DATA, MTP_OP_GET_OBJECT, transaction_id, buffer, read);
-
-        if(read < MTP_MAX_PACKET_SIZE) {
-            FURI_LOG_I("MTP", "End of file reached");
-
-            break;
-        }
+        left_size -= read_size;
     }
 
     send_mtp_response(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL);
