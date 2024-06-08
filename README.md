@@ -39,7 +39,7 @@ See [HOW_TO_BUILD.md](HOW_TO_BUILD.md) for more information.
 
 **and Special NOT Thanks to**:  
 - [Microsoft](https://microsoft.com) for making the [MTP Spec](https://www.usb.org/document-library/media-transfer-protocol-v11-spec-and-mtp-v11-adopters-agreement) so hard to understand. `>:(`  
-- [Microsoft](https://microsoft.com) for making `UCS-2` Little Endian hellscape. `>:(`
+- [Microsoft](https://microsoft.com) for reserving place for programmers to live in `WideChar` and `MultiByte` hellscape. `>:(`
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
