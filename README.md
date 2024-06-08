@@ -1,5 +1,7 @@
 <h1 align="center">Flipper Zero: MTP</h1>
 
+[![thumbnail](https://img.youtube.com/vi/e35w9nYTJfE/0.jpg)](https://www.youtube.com/watch?v=e35w9nYTJfE)
+
 ## Build Status
 
 - **Latest Release**: [Download](https://github.com/Alex4386/f0-mtp/releases/latest)
@@ -10,7 +12,6 @@
 | ![Nightly Build](https://github.com/Alex4386/f0-mtp/actions/workflows/nightly.yml/badge.svg) | ![Release Build](https://github.com/Alex4386/f0-mtp/actions/workflows/release.yml/badge.svg) |
 
 ## What is this?
-[**TL;DR** (Image)](https://github.com/Alex4386/f0-mtp/assets/27724108/12c5c152-c23a-4853-afe9-9db8d936d5d2)
 
 `f0-mtp` is a application that implements [`MTP (Media Transfer Protocol)` defined by `USB-IF`](https://www.usb.org/document-library/media-transfer-protocol-v11-spec-and-mtp-v11-adopters-agreement) on Flipper Zero.  
 This allows you to access the Flipper Zero's internal and SD card storages from your computer without the need of any additional drivers like [`HID-File-Transfer`](https://github.com/Kavakuo/HID-File-Transfer).  
