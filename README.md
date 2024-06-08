@@ -36,9 +36,10 @@ See [HOW_TO_BUILD.md](HOW_TO_BUILD.md) for more information.
 ## Special Thanks
 - [viveris/uMTP-Responder](https://github.com/viveris/uMTP-Responder)
 - [yoonghm/MTP](https://github.com/yoonghm/MTP)
-- [USB-IF MTP Spec]()
 
-**and Special NOT Thanks to**: Microsoft for making the MTP Spec so hard to understand. `>:(`
+**and Special NOT Thanks to**:  
+- [Microsoft](https://microsoft.com) for making the [MTP Spec](https://www.usb.org/document-library/media-transfer-protocol-v11-spec-and-mtp-v11-adopters-agreement) so hard to understand. `>:(`  
+- [Microsoft](https://microsoft.com) for making `UCS-2` Little Endian hellscape. `>:(`
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
