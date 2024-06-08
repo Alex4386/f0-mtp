@@ -1,6 +1,8 @@
 <h1 align="center">Flipper Zero: MTP</h1>
 
-<a href="https://www.youtube.com/watch?v=e35w9nYTJfE"><img src="https://img.youtube.com/vi/e35w9nYTJfE/maxresdefault.jpg" width="100%"></a>
+<a href="https://www.youtube.com/watch?v=e35w9nYTJfE">
+See this in action on YouTube!<br>
+<img src="https://img.youtube.com/vi/e35w9nYTJfE/maxresdefault.jpg" width="100%"></a>
 
 ## Build Status
 
