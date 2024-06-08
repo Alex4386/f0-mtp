@@ -21,7 +21,14 @@ If your computer can handle Android devices, it should be able to handle Flipper
 ### Features
 * Access Internal and SD card storages
 * List files and directories
-   - Navigate directories (Currently has a bug that file/directory name is not shown correctly)
+   - Navigate directories
+* Opening Files (Downloading Flipper files into Computer)
+* Deleting Files
+
+### Known Issues
+* Creating directories, files, uploading files are not supported yet.
+* Due to memory leak happening somewhere, sometimes the Flipper crashes during the file transfer.  
+  - I'm currently busy working on "Creating" part to at least work, so this won't be fixed soon.
 
 ## How to build
 See [HOW_TO_BUILD.md](HOW_TO_BUILD.md) for more information.  
@@ -29,6 +36,9 @@ See [HOW_TO_BUILD.md](HOW_TO_BUILD.md) for more information.
 ## Special Thanks
 - [viveris/uMTP-Responder](https://github.com/viveris/uMTP-Responder)
 - [yoonghm/MTP](https://github.com/yoonghm/MTP)
+- [USB-IF MTP Spec]()
+
+**and Special NOT Thanks to**: Microsoft for making the MTP Spec so hard to understand. `>:(`
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
