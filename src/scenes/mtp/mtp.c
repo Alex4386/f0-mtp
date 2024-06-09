@@ -522,6 +522,15 @@ int list_and_issue_handles(
     return count;
 }
 
+struct GetObjectContext {
+    File* file;
+};
+
+int GetObject_callback(void* ctx, uint8_t* buffer, int length) {
+    struct GetObjectContext* obj_ctx = (struct GetObjectContext*)ctx;
+    return storage_file_read(obj_ctx->file, buffer, length);
+}
+
 void GetObject(AppMTP* mtp, uint32_t transaction_id, uint32_t handle) {
     char* path = get_path_from_handle(mtp, handle);
     if(path == NULL) {
@@ -541,48 +550,19 @@ void GetObject(AppMTP* mtp, uint32_t transaction_id, uint32_t handle) {
         return;
     }
 
-    // I am a big dumbdumb
-    bool is_first = true;
-    uint8_t* buffer = malloc(sizeof(uint8_t) * MTP_MAX_PACKET_SIZE);
-    size_t total_size = storage_file_size(file);
-    size_t left_size = total_size;
+    uint32_t size = storage_file_size(file);
 
-    while(left_size > 0) {
-        uint8_t* payload_ptr = buffer;
-        size_t read_size = MTP_MAX_PACKET_SIZE;
-        if(is_first) {
-            FURI_LOG_I("MTP", "Sending MTP Header for GetObject req for file %s", path);
-            read_size -= sizeof(struct MTPHeader);
-            struct MTPHeader hdr = {
-                .len = total_size + sizeof(struct MTPHeader),
-                .type = MTP_TYPE_DATA,
-                .op = MTP_OP_GET_OBJECT,
-                .transaction_id = transaction_id,
-            };
+    struct GetObjectContext ctx = {
+        .file = file,
+    };
 
-            memcpy(buffer, &hdr, sizeof(struct MTPHeader));
-            payload_ptr += sizeof(struct MTPHeader);
-            read_size -= sizeof(struct MTPHeader);
-            is_first = false;
-        }
-
-        FURI_LOG_I("MTP", "Reading file %s", path);
-        uint32_t read = storage_file_read(file, payload_ptr, read_size);
-
-        size_t actual_packet_size = (payload_ptr - buffer) + // size of header (if exist),
-                                    read;
-
-        FURI_LOG_I("MTP", "Read %ld bytes", read);
-        usbd_ep_write(mtp->dev, MTP_EP_IN_ADDR, buffer, actual_packet_size);
-
-        left_size -= read_size;
-    }
+    send_mtp_response_stream(
+        mtp, MTP_TYPE_DATA, MTP_OP_GET_OBJECT, transaction_id, &ctx, GetObject_callback, size);
 
     send_mtp_response(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL);
 
     storage_file_close(file);
     storage_file_free(file);
-    free(buffer);
 }
 
 int GetObjectInfo(AppMTP* mtp, uint32_t handle, uint8_t* buffer) {
@@ -771,6 +751,46 @@ int GetDevicePropDesc(uint32_t prop_code, uint8_t* buffer) {
     }
 
     return ptr - buffer;
+}
+
+void send_mtp_response_stream(
+    AppMTP* mtp,
+    uint16_t resp_type,
+    uint16_t resp_code,
+    uint32_t transaction_id,
+    void* callback_context,
+    int (*callback)(void* ctx, uint8_t* buffer, int length),
+    uint32_t length) {
+    int chunk_idx = 0;
+
+    size_t buffer_available = MTP_MAX_PACKET_SIZE;
+    uint8_t* buffer = malloc(sizeof(uint8_t) * buffer_available);
+    uint8_t* ptr = buffer;
+
+    uint32_t sent_length = 0;
+
+    while(sent_length < length + sizeof(struct MTPHeader)) {
+        buffer_available = MTP_MAX_PACKET_SIZE;
+
+        if(chunk_idx == 0) {
+            struct MTPHeader* hdr = (struct MTPHeader*)buffer;
+            hdr->len = length;
+            hdr->type = resp_type;
+            hdr->op = resp_code;
+            hdr->transaction_id = transaction_id;
+
+            ptr += sizeof(*hdr);
+            buffer_available -= sizeof(*hdr);
+        }
+
+        int read_bytes = callback(callback_context, ptr, buffer_available);
+        uint32_t usb_bytes = (ptr - buffer) + read_bytes;
+        usbd_ep_write(mtp->dev, MTP_EP_IN_ADDR, buffer, usb_bytes);
+
+        sent_length += usb_bytes;
+    }
+
+    free(buffer);
 }
 
 void send_mtp_response_buffer(

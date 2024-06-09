@@ -156,6 +156,14 @@ void send_mtp_response_buffer(
     uint32_t transaction_id,
     uint8_t* buffer,
     uint32_t size);
+void send_mtp_response_stream(
+    AppMTP* mtp,
+    uint16_t resp_type,
+    uint16_t resp_code,
+    uint32_t transaction_id,
+    void* callback_context,
+    int (*callback)(void* ctx, uint8_t* buffer, int length),
+    uint32_t length);
 int BuildDeviceInfo(uint8_t* buffer);
 
 char* ReadMTPString(uint8_t* buffer);
