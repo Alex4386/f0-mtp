@@ -1113,12 +1113,19 @@ bool DeleteObject(AppMTP* mtp, uint32_t handle) {
         return false;
     }
 
-    if(!storage_file_exists(mtp->storage, path)) {
-        return false;
-    }
+    FileInfo fileinfo;
+    FS_Error err = storage_common_stat(mtp->storage, path, &fileinfo);
 
-    if(storage_common_remove(mtp->storage, path) != FSE_OK) {
-        return false;
+    if(err != FSE_OK) {
+        if(file_info_is_dir(&fileinfo)) {
+            if(storage_dir_remove(mtp->storage, path) != FSE_OK) {
+                return false;
+            }
+        } else {
+            if(storage_common_remove(mtp->storage, path) != FSE_OK) {
+                return false;
+            }
+        }
     }
 
     return true;

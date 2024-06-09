@@ -29,7 +29,7 @@ If your computer can handle Android devices, it should be able to handle Flipper
   - Large file transfer now **WORKS**!
     - It didn't work since the header did not have proper `size` defined, ignoring the further packets.
     - Now utilizing even less memory via `streaming` support!
-* Deleting Files
+* Deleting Files/Directories
 
 ### Known Issues
 * Creating directories, files, uploading files are not supported yet.
