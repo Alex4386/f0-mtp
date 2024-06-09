@@ -19,7 +19,10 @@ See this in action on YouTube!<br>
 This allows you to access the Flipper Zero's internal and SD card storages from your computer without the need of any additional drivers like [`HID-File-Transfer`](https://github.com/Kavakuo/HID-File-Transfer).  
   
 If your computer can handle Android devices, it should be able to handle Flipper Zero as well with this application.  
+
+Due to limitation of the Flipper Zero's hardware, The MTP connection utilizes `Full Speed` USB, which is USB 1.1 (12Mbps). which may be slow&trade;.  
   
+<sub>Note that Flipper Zero utilizes `SPI` for SD card, which speed is limited to around 1MB/s. So, the speed of the MTP connection probably will not the bottleneck here., <b>If you need quick copy, Use a proper SD Card Reader.</b></sub>
 
 ### Features
 * Access Internal and SD card storages
