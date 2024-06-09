@@ -251,7 +251,7 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
         break;
     case MTP_OP_OPEN_SESSION:
     case MTP_OP_CLOSE_SESSION:
-        FURI_LOG_I("MTP", "Open/CloseSession operation (STUB)");
+        //FURI_LOG_I("MTP", "Open/CloseSession operation (STUB)");
         send_mtp_response(mtp, 3, MTP_RESP_OK, container->header.transaction_id, NULL);
         break;
     case MTP_OP_GET_STORAGE_IDS:
@@ -260,17 +260,18 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
         break;
     case MTP_OP_GET_STORAGE_INFO: {
         FURI_LOG_I("MTP", "GetStorageInfo operation");
-        uint8_t info[256];
+        uint8_t* info = malloc(sizeof(uint8_t) * 256);
         int length = GetStorageInfo(mtp, container->params[0], info);
         send_mtp_response_buffer(
             mtp,
             MTP_TYPE_DATA,
             MTP_OP_GET_STORAGE_INFO,
             container->header.transaction_id,
-            (uint8_t*)&info,
+            info,
             length);
         send_mtp_response_buffer(
             mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, container->header.transaction_id, NULL, 0);
+        free(info);
         break;
     }
     case MTP_OP_GET_OBJECT_HANDLES:
@@ -285,7 +286,7 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
                 0);
             break;
         } else {
-            uint8_t buffer[256];
+            uint8_t* buffer = malloc(sizeof(uint8_t) * 256);
             int length = GetObjectHandles(mtp, container->params[0], container->params[2], buffer);
             send_mtp_response_buffer(
                 mtp,
@@ -297,6 +298,7 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
 
             send_mtp_response_buffer(
                 mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, container->header.transaction_id, NULL, 0);
+            free(buffer);
         }
         break;
     case MTP_OP_GET_OBJECT_INFO: {
@@ -384,27 +386,30 @@ void send_storage_ids(AppMTP* mtp, uint32_t transaction_id) {
 }
 
 void send_device_info(AppMTP* mtp, uint32_t transaction_id) {
-    uint8_t response[256];
+    uint8_t* response = malloc(sizeof(uint8_t) * 256);
     int length = BuildDeviceInfo(response);
     send_mtp_response_buffer(
         mtp, MTP_TYPE_DATA, MTP_OP_GET_DEVICE_INFO, transaction_id, response, length);
     send_mtp_response_buffer(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL, 0);
+    free(response);
 }
 
 void send_device_prop_value(AppMTP* mtp, uint32_t transaction_id, uint32_t prop_code) {
-    uint8_t response[256];
+    uint8_t* response = malloc(sizeof(uint8_t) * 256);
     int length = GetDevicePropValue(prop_code, response);
     send_mtp_response_buffer(
         mtp, MTP_TYPE_DATA, MTP_OP_GET_DEVICE_PROP_VALUE, transaction_id, response, length);
     send_mtp_response_buffer(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL, 0);
+    free(response);
 }
 
 void send_device_prop_desc(AppMTP* mtp, uint32_t transaction_id, uint32_t prop_code) {
-    uint8_t response[256];
+    uint8_t* response = malloc(sizeof(uint8_t) * 256);
     int length = GetDevicePropDesc(prop_code, response);
     send_mtp_response_buffer(
         mtp, MTP_TYPE_DATA, MTP_OP_GET_DEVICE_PROP_DESC, transaction_id, response, length);
     send_mtp_response_buffer(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL, 0);
+    free(response);
 }
 
 char* get_path_from_handle(AppMTP* mtp, uint32_t handle) {
@@ -768,13 +773,15 @@ void send_mtp_response_stream(
     uint8_t* ptr = buffer;
 
     uint32_t sent_length = 0;
+    FURI_LOG_I("MTP", "Sending MTP response stream: %ld bytes", length);
 
-    while(sent_length < length + sizeof(struct MTPHeader)) {
+    do {
         buffer_available = MTP_MAX_PACKET_SIZE;
+        ptr = buffer; // reset the pointer
 
         if(chunk_idx == 0) {
             struct MTPHeader* hdr = (struct MTPHeader*)buffer;
-            hdr->len = length;
+            hdr->len = length + sizeof(*hdr);
             hdr->type = resp_type;
             hdr->op = resp_code;
             hdr->transaction_id = transaction_id;
@@ -783,14 +790,44 @@ void send_mtp_response_stream(
             buffer_available -= sizeof(*hdr);
         }
 
+        FURI_LOG_I("MTP", "Remaining bytes for packet: %d", buffer_available);
+
         int read_bytes = callback(callback_context, ptr, buffer_available);
         uint32_t usb_bytes = (ptr - buffer) + read_bytes;
+        FURI_LOG_I("MTP", "USB packet size: %ld", usb_bytes);
+
         usbd_ep_write(mtp->dev, MTP_EP_IN_ADDR, buffer, usb_bytes);
 
         sent_length += usb_bytes;
-    }
+        chunk_idx++;
+
+        FURI_LOG_I(
+            "MTP",
+            "Sent chunk %d (currently sent: %ld/%ld)",
+            chunk_idx,
+            sent_length - sizeof(struct MTPHeader),
+            length);
+    } while(sent_length < length + sizeof(struct MTPHeader));
 
     free(buffer);
+}
+
+int send_mtp_response_buffer_callback(void* ctx, uint8_t* buffer, int size) {
+    struct MTPResponseBufferContext* context = (struct MTPResponseBufferContext*)ctx;
+    if(context->buffer == NULL || context->size == 0) {
+        return 0;
+    }
+
+    uint32_t remaining = context->size - context->sent;
+    uint32_t to_send = size;
+    if(remaining < to_send) {
+        to_send = remaining;
+    }
+
+    memcpy(buffer, context->buffer + context->sent, to_send);
+    context->sent += to_send;
+
+    return to_send;
 }
 
 void send_mtp_response_buffer(
@@ -800,62 +837,14 @@ void send_mtp_response_buffer(
     uint32_t transaction_id,
     uint8_t* buffer,
     uint32_t size) {
-    size_t target_size = size + sizeof(struct MTPHeader);
-    struct MTPHeader header = {
-        .len = target_size,
-        .type = resp_type,
-        .op = resp_code,
-        .transaction_id = transaction_id,
-    };
+    struct MTPResponseBufferContext* ctx = malloc(sizeof(struct MTPResponseBufferContext));
+    ctx->buffer = buffer;
+    ctx->size = size;
+    ctx->sent = 0;
 
-    // Send the response in one go
-    /*
-    uint8_t* response = malloc(target_size);
-    memcpy(response, &header, sizeof(header));
-    memcpy(response + sizeof(header), buffer, size);
-
-    usbd_ep_write(mtp->dev, MTP_EP_OUT_ADDR, response, target_size);
-    */
-
-    // Send the response in chunks
-    int chunk_count = (target_size / MTP_MAX_PACKET_SIZE) + 1;
-    FURI_LOG_I("MTP", "Sending MTP response: %d bytes in %d chunks", target_size, chunk_count);
-    uint8_t* ptr = buffer;
-
-    mtp->write_pending = true;
-
-    for(int i = 0; i < chunk_count; i++) {
-        FURI_LOG_I("MTP", "Sending chunk %d/%d", i + 1, chunk_count);
-        mtp->write_pending = true;
-        size_t chunk_size = (i == chunk_count - 1) ? target_size % MTP_MAX_PACKET_SIZE :
-                                                     MTP_MAX_PACKET_SIZE;
-
-        uint8_t* buf = NULL;
-
-        if(i == 0) {
-            // first send header
-            buf = malloc(chunk_size);
-            FURI_LOG_I("MTP", "1st chunk! size = %d", chunk_size);
-            memcpy(buf, &header, sizeof(header));
-            memcpy(buf + sizeof(header), ptr, chunk_size - sizeof(header));
-            usbd_ep_write(mtp->dev, MTP_EP_IN_ADDR, buf, chunk_size);
-            ptr += chunk_size - sizeof(header);
-        } else {
-            usbd_ep_write(mtp->dev, MTP_EP_IN_ADDR, ptr, chunk_size);
-            ptr += chunk_size;
-        }
-
-        FURI_LOG_I(
-            "MTP",
-            "Sent chunk %d/%d (offset: %d)",
-            i + 1,
-            chunk_count,
-            ptr - buffer + sizeof(header));
-
-        if(buf != NULL) {
-            free(buf);
-        }
-    }
+    send_mtp_response_stream(
+        mtp, resp_type, resp_code, transaction_id, ctx, send_mtp_response_buffer_callback, size);
+    free(ctx);
 }
 
 void send_mtp_response(
@@ -1016,6 +1005,7 @@ int GetStorageInfo(AppMTP* mtp, uint32_t storage_id, uint8_t* buf) {
     info->free_space_in_objects = 20ul;
     info->filesystem_type = 0x0002; // Generic hierarchical
     info->access_capability = 0x0000; // Read-write
+    FURI_LOG_I("MTP", "Getting storage info for storage ID %04lx", storage_id);
 
     if(storage_id == INTERNAL_STORAGE_ID) {
         // Fill in details for internal storage
@@ -1076,6 +1066,9 @@ void WriteMTPString(uint8_t* buffer, const char* str, uint16_t* length) {
     uint8_t* ptr = buffer;
     uint8_t str_len = strlen(str);
 
+    FURI_LOG_I("MTP", "Writing MTP string: %s", str);
+    FURI_LOG_I("MTP", "String length: %d", str_len);
+
     // extra handling for empty string
     if(str_len == 0) {
         *ptr = 0x00;
@@ -1094,6 +1087,7 @@ void WriteMTPString(uint8_t* buffer, const char* str, uint16_t* length) {
     *ptr++ = 0x00; // Null terminator (UTF-16LE)
     *ptr++ = 0x00;
 
+    FURI_LOG_I("MTP", "String byte length: %d", ptr - buffer);
     *length = ptr - buffer;
 }
 

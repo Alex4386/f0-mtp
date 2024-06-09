@@ -182,3 +182,9 @@ char* get_base_path_from_storage_id(uint32_t storage_id);
 char* get_path_from_handle(AppMTP* mtp, uint32_t handle);
 uint32_t issue_object_handle(AppMTP* mtp, char* path);
 void handle_mtp_data_complete(AppMTP* mtp);
+
+struct MTPResponseBufferContext {
+    uint8_t* buffer;
+    uint32_t size;
+    uint32_t sent;
+};
