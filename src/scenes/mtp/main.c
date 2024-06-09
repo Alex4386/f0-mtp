@@ -114,6 +114,26 @@ void MTP_on_exit(void* context) {
         return;
     }
 
+    if(app->allocated_scenes != NULL) {
+        AppMTP* mtp = app->allocated_scenes[THIS_SCENE];
+        if(mtp != NULL) {
+            // free all handles
+            FileHandle* handle = mtp->handles;
+            mtp->handles = NULL;
+
+            while(handle != NULL) {
+                FileHandle* next = handle->next;
+
+                if(handle->path != NULL) free(handle->path);
+                free(handle);
+
+                handle = next;
+            }
+        }
+    }
+
+    furi_record_close(RECORD_STORAGE);
+
     // revert to old usb mode
     furi_hal_usb_set_config(tmp->old_usb, NULL);
 
