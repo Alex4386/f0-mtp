@@ -1118,7 +1118,7 @@ bool DeleteObject(AppMTP* mtp, uint32_t handle) {
 
     if(err != FSE_OK) {
         if(file_info_is_dir(&fileinfo)) {
-            if(storage_dir_remove(mtp->storage, path) != FSE_OK) {
+            if(!storage_simply_remove_recursive(mtp->storage, path)) {
                 return false;
             }
         } else {
