@@ -26,7 +26,9 @@ If your computer can handle Android devices, it should be able to handle Flipper
 * List files and directories
    - Navigate directories
 * Opening Files (Downloading Flipper files into Computer)
-   - Large file transfer now **WORKS**!
+  - Large file transfer now **WORKS**!
+    - It didn't work since the header did not have proper `size` defined, ignoring the further packets.
+    - Now utilizing even less memory via `streaming` support!
 * Deleting Files
 
 ### Known Issues
