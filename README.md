@@ -24,9 +24,8 @@ Due to limitation of the Flipper Zero's hardware, The MTP connection utilizes `F
 
 > [!NOTE]
 > Flipper Zero utilizes `SPI` for SD card, which speed is limited to around 1MB/s.  
-> So, the speed of the MTP connection probably will not the bottleneck here.
-> <b>If you need quick copy, Use a proper SD Card Reader.</b>
-
+> So, the speed of the MTP connection probably will not the bottleneck here.  
+> <b>So, If you need quick copy, Use a proper SD Card Reader.</b>
 
 ### Features
 * Access Internal and SD card storages
