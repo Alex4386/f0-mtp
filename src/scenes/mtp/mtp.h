@@ -31,6 +31,16 @@
 #define MTP_OP_GET_DEVICE_PROP_DESC 0x1014
 #define MTP_OP_GET_DEVICE_PROP_VALUE 0x1015
 
+#define MTP_OP_GET_OBJECT_PROPS_SUPPORTED 0x9801
+#define MTP_OP_GET_OBJECT_PROP_DESC 0x9802
+#define MTP_OP_GET_OBJECT_PROP_VALUE 0x9803
+#define MTP_OP_SET_OBJECT_PROP_VALUE 0x9804
+
+// MTP Object Props
+#define MTP_PROP_STORAGE_ID 0xDC01
+#define MTP_PROP_OBJECT_FORMAT 0xDC02
+#define MTP_PROP_OBJECT_FILE_NAME 0xDC07
+
 // MTP Response Codes
 #define MTP_RESP_UNKNOWN 0x2000
 #define MTP_RESP_OK 0x2001
@@ -121,6 +131,9 @@ typedef struct MTPDataPersistence {
     uint16_t op;
     uint32_t transaction_id;
     uint32_t params[5];
+
+    uint32_t prev_handle;
+    File* current_file;
 } MTPDataPersistence;
 
 struct MTPContainer {
@@ -166,6 +179,7 @@ void send_mtp_response_stream(
     uint32_t length);
 int BuildDeviceInfo(uint8_t* buffer);
 
+bool CheckMTPStringHasUnicode(uint8_t* buffer);
 char* ReadMTPString(uint8_t* buffer);
 void WriteMTPString(uint8_t* buffer, const char* str, uint16_t* length);
 void send_device_info(AppMTP* mtp, uint32_t transaction_id);

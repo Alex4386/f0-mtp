@@ -27,6 +27,24 @@ Due to limitation of the Flipper Zero's hardware, The MTP connection utilizes `F
 > So, the speed of the MTP connection probably will not the bottleneck here.  
 > <b>So, If you need quick copy, Use a proper SD Card Reader.</b>
 
+### Before using...
+Here are some things you should know before using this application:
+
+> [!WARNING]
+> **DO NOT transfer files over 64K** in one go.  
+> This will:
+> - **Crash the Flipper** if the file is too big.
+> - **Corrupt the SD Card filesystem** due to flipper zero's filesystem handler's limitation.
+>
+> This is applicable to both uploading and downloading files.
+
+> [!WARNING]
+> **DO NOT** use `UNICODE` characters in the file/directory names.  
+> Flipper Zero's filesystem isn't designed to handle `UNICODE` characters. such as:
+> - `한글.txt`
+> - `日本語.txt`
+> - `中文.txt`
+
 ### Features
 * Access Internal and SD card storages
 * List files and directories
@@ -35,12 +53,15 @@ Due to limitation of the Flipper Zero's hardware, The MTP connection utilizes `F
   - Large file transfer now **WORKS**!
     - It didn't work since the header did not have proper `size` defined, ignoring the further packets.
     - Now utilizing even less memory via `streaming` support!
+* Move Files into Flipper
+  - **NEW!** Now you can upload files to Flipper Zero!
+  - **Note:** Flipper Zero has limited memory, please refrain from moving files bigger than 64K on one go. (for me 80K was a hard limit)
 * Deleting Files/Directories
 
 ### Known Issues
-* Creating directories, files, uploading files are not supported yet.
-* Due to memory leak happening somewhere, sometimes the Flipper crashes during the file transfer.  
-  - I'm currently busy working on "Creating" part to at least work, so this won't be fixed soon.
+* Renaming directories, files are not supported yet.
+* Fix "memory leaks"  
+  - I'm currently busy working on code cleanup. So, I can't afford to do this right now.
 
 ## How to build
 See [HOW_TO_BUILD.md](HOW_TO_BUILD.md) for more information.  
