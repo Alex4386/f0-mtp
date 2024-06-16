@@ -24,10 +24,12 @@ uint16_t supported_operations[] = {
     MTP_OP_GET_DEVICE_PROP_DESC,
     MTP_OP_GET_DEVICE_PROP_VALUE,
     MTP_OP_GET_OBJECT_PROPS_SUPPORTED,
-    MTP_OP_SET_OBJECT_PROP_VALUE};
+    MTP_OP_GET_OBJECT_PROP_DESC,
+    MTP_OP_GET_OBJECT_PROP_VALUE,
+    MTP_OP_SET_OBJECT_PROP_VALUE,
+};
 
 uint16_t supported_object_props[] = {
-    MTP_PROP_STORAGE_ID,
     MTP_PROP_OBJECT_FORMAT,
     MTP_PROP_OBJECT_FILE_NAME,
 };
@@ -421,6 +423,175 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
         free(buffer);
         send_mtp_response_buffer(
             mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, container->header.transaction_id, NULL, 0);
+        break;
+    }
+    case MTP_OP_GET_OBJECT_PROP_DESC: {
+        FURI_LOG_I("MTP", "GetObjectPropDesc operation");
+        uint8_t* buffer = malloc(sizeof(uint8_t) * 256);
+        uint32_t object_prop = container->params[0];
+        uint32_t object_format = container->params[1];
+        uint8_t* ptr = buffer;
+
+        struct MTPObjectPropDescHeaderChunk1* chunk1 =
+            (struct MTPObjectPropDescHeaderChunk1*)buffer;
+        chunk1->prop_code = object_prop;
+
+        if(object_prop == MTP_PROP_OBJECT_FORMAT) {
+            chunk1->data_type = MTP_TYPE_UINT16;
+            chunk1->get_set = MTP_PROP_GET;
+
+            uint8_t* data = buffer + sizeof(struct MTPObjectPropDescHeaderChunk1);
+            uint16_t* obj_format_ptr = (uint16_t*)data;
+            *obj_format_ptr = object_format;
+            obj_format_ptr++;
+
+            ptr = (uint8_t*)obj_format_ptr;
+            struct MTPObjectPropDescHeaderChunk2* chunk2 =
+                (struct MTPObjectPropDescHeaderChunk2*)ptr;
+
+            chunk2->group_code = 0;
+            chunk2->form_flag = 0x00;
+
+            ptr += sizeof(struct MTPObjectPropDescHeaderChunk2);
+        } else if(object_prop == MTP_PROP_OBJECT_FILE_NAME) {
+            chunk1->data_type = MTP_TYPE_STR;
+            chunk1->get_set = MTP_PROP_GETSET;
+
+            uint8_t* data = buffer + sizeof(struct MTPObjectPropDescHeaderChunk1);
+            uint8_t* ptr = (uint8_t*)data;
+
+            // fill factory default value
+            if(object_format == MTP_FORMAT_ASSOCIATION) {
+                // default filename is "New Folder"
+                uint16_t length = 0;
+                WriteMTPString(ptr, "New Folder", &length);
+
+                ptr += length;
+            } else {
+                // default filename is "New Folder"
+                uint16_t length = 0;
+                WriteMTPString(ptr, "", &length);
+
+                ptr += length;
+            }
+
+            struct MTPObjectPropDescHeaderChunk2* chunk2 =
+                (struct MTPObjectPropDescHeaderChunk2*)ptr;
+
+            chunk2->group_code = 0;
+            chunk2->form_flag = 0x00;
+
+            ptr += sizeof(struct MTPObjectPropDescHeaderChunk2);
+        } else {
+            send_mtp_response(
+                mtp, 3, MTP_RESP_INVALID_OBJECT_PROP_CODE, container->header.transaction_id, NULL);
+            free(buffer);
+            return;
+        }
+
+        int length = ptr - buffer;
+
+        send_mtp_response_buffer(
+            mtp,
+            MTP_TYPE_DATA,
+            MTP_OP_GET_OBJECT_PROP_DESC,
+            container->header.transaction_id,
+            buffer,
+            length);
+        free(buffer);
+        send_mtp_response_buffer(
+            mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, container->header.transaction_id, NULL, 0);
+        break;
+    }
+    case MTP_OP_GET_OBJECT_PROP_VALUE: {
+        FURI_LOG_I("MTP", "GetObjectPropValue operation");
+        uint8_t* buffer = malloc(sizeof(uint8_t) * 256);
+        uint32_t handle = container->params[0];
+        uint32_t object_prop = container->params[1];
+
+        char* path = get_path_from_handle(mtp, handle);
+        if(path == NULL) {
+            send_mtp_response(
+                mtp,
+                MTP_TYPE_RESPONSE,
+                MTP_RESP_INVALID_OBJECT_HANDLE,
+                container->header.transaction_id,
+                NULL);
+            free(buffer);
+            break;
+        }
+
+        FURI_LOG_I("MTP", "Getting object property (0x%04lx) for %s", object_prop, path);
+        if(object_prop == MTP_PROP_OBJECT_FORMAT) {
+            FileInfo fileinfo;
+            FS_Error err = storage_common_stat(mtp->storage, path, &fileinfo);
+            if(err != FSE_OK) {
+                send_mtp_response(
+                    mtp,
+                    MTP_TYPE_RESPONSE,
+                    MTP_RESP_INVALID_OBJECT_HANDLE,
+                    container->header.transaction_id,
+                    NULL);
+                free(buffer);
+                break;
+            }
+
+            bool is_dir = file_info_is_dir(&fileinfo);
+            uint16_t format = is_dir ? MTP_FORMAT_ASSOCIATION : MTP_FORMAT_UNDEFINED;
+
+            memcpy(buffer, &format, sizeof(uint16_t));
+            send_mtp_response_buffer(
+                mtp,
+                MTP_TYPE_DATA,
+                MTP_OP_GET_OBJECT_PROP_VALUE,
+                container->header.transaction_id,
+                buffer,
+                sizeof(uint16_t));
+        } else if(object_prop == MTP_PROP_OBJECT_FILE_NAME) {
+            char* path = get_path_from_handle(mtp, handle);
+            if(path == NULL) {
+                send_mtp_response(
+                    mtp,
+                    MTP_TYPE_RESPONSE,
+                    MTP_RESP_INVALID_OBJECT_HANDLE,
+                    container->header.transaction_id,
+                    NULL);
+                free(buffer);
+                break;
+            }
+
+            uint8_t* ptr = buffer;
+            char* file_name = strrchr(path, '/');
+            uint16_t length = 0;
+
+            WriteMTPString(ptr, file_name + 1, &length);
+
+            print_bytes("MTP FileName", ptr, length);
+            send_mtp_response_buffer(
+                mtp,
+                MTP_TYPE_DATA,
+                MTP_OP_GET_OBJECT_PROP_VALUE,
+                container->header.transaction_id,
+                buffer,
+                length);
+        } else {
+            send_mtp_response(
+                mtp,
+                MTP_TYPE_RESPONSE,
+                MTP_RESP_INVALID_OBJECT_PROP_CODE,
+                container->header.transaction_id,
+                NULL);
+            break;
+        }
+
+        free(buffer);
+        send_mtp_response(
+            mtp,
+            MTP_TYPE_RESPONSE,
+            MTP_OP_GET_OBJECT_PROP_VALUE,
+            container->header.transaction_id,
+            NULL);
+
         break;
     }
     case MTP_OP_DELETE_OBJECT:
@@ -954,6 +1125,10 @@ void send_mtp_response_buffer(
     ctx->buffer = buffer;
     ctx->size = size;
     ctx->sent = 0;
+
+    if(resp_type == MTP_TYPE_DATA) {
+        print_bytes("MTP Data", buffer, size);
+    }
 
     send_mtp_response_stream(
         mtp, resp_type, resp_code, transaction_id, ctx, send_mtp_response_buffer_callback, size);

@@ -37,9 +37,35 @@
 #define MTP_OP_SET_OBJECT_PROP_VALUE 0x9804
 
 // MTP Object Props
-#define MTP_PROP_STORAGE_ID 0xDC01
 #define MTP_PROP_OBJECT_FORMAT 0xDC02
 #define MTP_PROP_OBJECT_FILE_NAME 0xDC07
+
+// MTP DataTypes
+#define MTP_TYPE_INT8 0x0001
+#define MTP_TYPE_UINT8 0x0002
+#define MTP_TYPE_INT16 0x0003
+#define MTP_TYPE_UINT16 0x0004
+#define MTP_TYPE_INT32 0x0005
+#define MTP_TYPE_UINT32 0x0006
+#define MTP_TYPE_INT64 0x0007
+#define MTP_TYPE_UINT64 0x0008
+#define MTP_TYPE_INT128 0x0009
+#define MTP_TYPE_UINT128 0x000A
+#define MTP_TYPE_AINT8 0x4001
+#define MTP_TYPE_AUINT8 0x4002
+#define MTP_TYPE_AINT16 0x4003
+#define MTP_TYPE_AUINT16 0x4004
+#define MTP_TYPE_AINT32 0x4005
+#define MTP_TYPE_AUINT32 0x4006
+#define MTP_TYPE_AINT64 0x4007
+#define MTP_TYPE_AUINT64 0x4008
+#define MTP_TYPE_AINT128 0x4009
+#define MTP_TYPE_AUINT128 0x400A
+#define MTP_TYPE_STR 0xFFFF
+
+// MTP Prop Get/Set
+#define MTP_PROP_GET 0x00
+#define MTP_PROP_GETSET 0x01
 
 // MTP Response Codes
 #define MTP_RESP_UNKNOWN 0x2000
@@ -67,6 +93,8 @@
 #define MTP_RESP_UNKNOWN_VENDOR_CODE 0x2017
 #define MTP_RESP_CAPTURE_ALREADY_TERMINATED 0x2018
 #define MTP_RESP_DEVICE_BUSY 0x2019
+
+#define MTP_RESP_INVALID_OBJECT_PROP_CODE 0xA801
 
 // Storage IDs
 #define INTERNAL_STORAGE_ID 0x00010001
@@ -201,4 +229,15 @@ struct MTPResponseBufferContext {
     uint8_t* buffer;
     uint32_t size;
     uint32_t sent;
+};
+
+struct MTPObjectPropDescHeaderChunk1 {
+    uint16_t prop_code;
+    uint16_t data_type;
+    uint8_t get_set; // 0x00: Get, 0x01: GetSet
+};
+
+struct MTPObjectPropDescHeaderChunk2 {
+    uint32_t group_code;
+    uint8_t form_flag;
 };
