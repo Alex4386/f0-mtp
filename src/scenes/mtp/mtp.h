@@ -1,5 +1,9 @@
 #pragma once
 
+// MTP Device Serial
+#define MTP_DEVICE_SERIAL "HakureiReimu"
+#define MTP_DEVICE_VERISON "1.0"
+
 #define MTP_STANDARD_VERSION 100
 #define MTP_VENDOR_EXTENSION_ID 0x6
 #define MTP_VENDOR_EXTENSION_VERSION 100

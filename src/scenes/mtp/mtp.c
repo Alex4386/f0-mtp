@@ -1086,11 +1086,11 @@ int BuildDeviceInfo(uint8_t* buffer) {
     ptr += length;
 
     // Device version
-    WriteMTPString(ptr, "1.0", &length);
+    WriteMTPString(ptr, MTP_DEVICE_VERSION, &length);
     ptr += length;
 
     // Serial number
-    WriteMTPString(ptr, "HakureiReimu", &length);
+    WriteMTPString(ptr, MTP_DEVICE_SERIAL, &length);
     ptr += length;
 
     return ptr - buffer;
