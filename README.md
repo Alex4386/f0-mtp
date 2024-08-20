@@ -34,8 +34,9 @@ Here are some things you should know before using this application:
 > **DO NOT transfer files over 64K** in one go.  
 > This will:
 > - **Crash the Flipper** if the file is too big.
+> And _might_ :  
 > - **Corrupt the SD Card filesystem** due to current implementation's limitation.
->   (If you know how to fix this issue, feel free to give me a PR!)
+>   (If you know how to fix this issue, feel free to give me a PR!, quick `chkdsk` will fix the corruption though)
 >
 
 > [!WARNING]
