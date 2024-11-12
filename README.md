@@ -34,9 +34,11 @@ Here are some things you should know before using this application:
 > **DO NOT transfer files over 64K** in one go.  
 > This will:
 > - **Crash the Flipper** if the file is too big.
-> - **Corrupt the SD Card filesystem** due to flipper zero's filesystem handler's limitation.
+> 
+> And _might_ :  
+> - **Corrupt the SD Card filesystem** due to current implementation's limitation.
+>   (If you know how to fix this issue, feel free to give me a PR!, quick `chkdsk` will fix the corruption though)
 >
-> This is applicable to both uploading and downloading files.
 
 > [!WARNING]
 > **DO NOT** use `UNICODE` characters in the file/directory names.  
