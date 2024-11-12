@@ -1099,15 +1099,25 @@ int BuildDeviceInfo(uint8_t* buffer) {
 void GetStorageIDs(AppMTP* mtp, uint32_t* storage_ids, uint32_t* count) {
     SDInfo sd_info;
     FS_Error err = storage_sd_info(mtp->storage, &sd_info);
-    storage_ids[0] = INTERNAL_STORAGE_ID;
+
+    // Due to filesystem change, we only have external storage.
+    // storage_ids[0] = INTERNAL_STORAGE_ID;
+    // // Check if SD card is present
+    // if(err != FSE_OK) {
+    //     FURI_LOG_E("MTP", "SD Card not found");
+    //     *count = 1; // We have only one storage
+    //     return;
+    // }
+
+    // Check if SD card is present
     if(err != FSE_OK) {
         FURI_LOG_E("MTP", "SD Card not found");
-        *count = 1; // We have only one storage
+        *count = 0; // No storage.
         return;
     }
 
-    storage_ids[1] = EXTERNAL_STORAGE_ID;
-    *count = 2; // We have two storages: internal and external
+    storage_ids[0] = EXTERNAL_STORAGE_ID;
+    *count = 1;
 }
 
 int GetStorageInfo(AppMTP* mtp, uint32_t storage_id, uint8_t* buf) {
