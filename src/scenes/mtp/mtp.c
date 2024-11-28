@@ -914,10 +914,16 @@ int GetDevicePropValue(uint32_t prop_code, uint8_t* buffer) {
     uint16_t length;
 
     switch(prop_code) {
-    case 0xd402:
-        WriteMTPString(ptr, "Flipper Zero", &length);
+    case 0xd402: {
+        const char* deviceName = furi_hal_version_get_name_ptr();
+        if(deviceName == NULL) {
+            deviceName = "Flipper Zero";
+        }
+
+        WriteMTPString(ptr, deviceName, &length);
         ptr += length;
         break;
+    }
     case 0x5001: {
         // Battery level
         Power* power = furi_record_open(RECORD_POWER);
@@ -1227,7 +1233,8 @@ int BuildDeviceInfo(uint8_t* buffer) {
     ptr += length;
 
     // Device version
-    WriteMTPString(ptr, MTP_DEVICE_VERSION, &length);
+    const Version* ver = furi_hal_version_get_firmware_version();
+    WriteMTPString(ptr, version_get_version(ver), &length);
     ptr += length;
 
     // Serial number
@@ -1520,7 +1527,7 @@ int GetObjectPropValueInternal(AppMTP* mtp, const char* path, uint32_t prop_code
         *(uint32_t*)ptr = 0xffff;
         ptr += sizeof(uint32_t);
 
-        *(uint8_t*)ptr = 0x00;
+        *(uint8_t*)ptr = 0x01;
         ptr += sizeof(uint8_t);
 
         char* file_name = strrchr(path, '/');

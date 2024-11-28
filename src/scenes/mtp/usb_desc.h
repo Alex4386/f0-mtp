@@ -4,21 +4,21 @@
 #include <furi_hal_usb.h>
 
 #define USB_MANUFACTURER_STRING "Flipper Devices Inc."
-#define USB_PRODUCT_STRING "Flipper Zero Virtual MTP Device"
-#define USB_DEVICE_MODEL "Flipper Zero"
+#define USB_PRODUCT_STRING      "Flipper Zero Virtual MTP Device"
+#define USB_DEVICE_MODEL        "Flipper Zero"
 
 #define USB_SUBCLASS_MTP 0x01
-#define USB_PROTO_MTP 0x01
+#define USB_PROTO_MTP    0x01
 #define USB_CONF_VAL_MTP 1
 
 // Endpoint Addresses
-#define MTP_EP_IN_ADDR 0x81
-#define MTP_EP_OUT_ADDR 0x02
+#define MTP_EP_IN_ADDR     0x81
+#define MTP_EP_OUT_ADDR    0x02
 #define MTP_EP_INT_IN_ADDR 0x03
 
-#define MTP_MAX_PACKET_SIZE 64
+#define MTP_MAX_PACKET_SIZE    64
 #define USB_MAX_INTERRUPT_SIZE 28
-#define BCD_VERSION VERSION_BCD(1, 0, 0)
+#define BCD_VERSION            VERSION_BCD(1, 0, 0)
 
 struct MtpDescriptor {
     struct usb_config_descriptor config;
