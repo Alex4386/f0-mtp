@@ -67,7 +67,7 @@ Here are some things you should know before using this application:
 - Create Directories (Renaming not supported)
 - Actual **Serial Number**, **Model Name**, **Firmware Version** is now shown in the MTP client.
 
-### Known Issuesß
+### Known Issues
 
 - Renaming directories, files are not supported yet.
 - Fix "memory leaks"
