@@ -31,7 +31,8 @@ Due to limitation of the Flipper Zero's hardware, The MTP connection utilizes `F
 
 Here are some things you should know before using this application:
 
-> [!WARNING] > **DO NOT transfer files over 64K** in one go.  
+> [!WARNING]  
+> **DO NOT transfer files over 64K** in one go.  
 > This will:
 >
 > - **Crash the Flipper** if the file is too big.
@@ -41,7 +42,8 @@ Here are some things you should know before using this application:
 > - **Corrupt the SD Card filesystem** due to current implementation's limitation.
 >   (If you know how to fix this issue, feel free to give me a PR!, quick `chkdsk` will fix the corruption though)
 
-> [!WARNING] > **DO NOT** use `UNICODE` characters in the file/directory names.  
+> [!WARNING]  
+> **DO NOT** use `UNICODE` characters in the file/directory names.  
 > Flipper Zero's filesystem isn't designed to handle `UNICODE` characters. such as:
 >
 > - `한글.txt`
