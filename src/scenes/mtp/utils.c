@@ -2,6 +2,10 @@
 
 const char hex[] = "0123456789ABCDEF";
 
+char byte_to_hex(uint8_t byte) {
+    return hex[byte];
+}
+
 void print_bytes(char* tag, uint8_t* bytes, size_t len) {
     FURI_LOG_I("MTP", "Dumping bytes - TAG: %s", tag);
     int lines = len > 0 ? (len / 16) + 1 : 0;

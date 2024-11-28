@@ -1,4 +1,5 @@
 #include <furi.h>
+#include <power/power_service/power.h>
 #include <storage/storage.h>
 #include "main.h"
 #include "mtp.h"
@@ -24,7 +25,10 @@ uint16_t supported_operations[] = {
     MTP_OP_GET_DEVICE_PROP_DESC,
     MTP_OP_GET_DEVICE_PROP_VALUE,
     MTP_OP_GET_OBJECT_PROPS_SUPPORTED,
-    MTP_OP_SET_OBJECT_PROP_VALUE};
+    MTP_OP_SET_OBJECT_PROP_VALUE,
+    MTP_OP_MOVE_OBJECT,
+    MTP_OP_POWER_DOWN,
+};
 
 uint16_t supported_object_props[] = {
     MTP_PROP_STORAGE_ID,
@@ -35,6 +39,7 @@ uint16_t supported_object_props[] = {
 // Supported device properties (example, add as needed)
 uint16_t supported_device_properties[] = {
     0xd402, // Device friendly name
+    0x5001, // Battery level
 };
 
 uint16_t supported_playback_formats[] = {
@@ -172,6 +177,47 @@ void handle_mtp_data_packet(AppMTP* mtp, uint8_t* buffer, int32_t length, bool c
             storage_file_free(file);
 
             persistence.current_file = NULL;
+        }
+    } else if(persistence.op == MTP_OP_SET_OBJECT_PROP_VALUE) {
+        uint32_t handle = persistence.params[0];
+        uint32_t prop_code = persistence.params[1];
+
+        char* path = get_path_from_handle(mtp, handle);
+        if(path == NULL) {
+            FURI_LOG_E("MTP", "Invalid handle for MTP_OP_SET_OBJECT_PROP_VALUE");
+            send_mtp_response(
+                mtp, 3, MTP_RESP_INVALID_OBJECT_HANDLE, persistence.transaction_id, NULL);
+            return;
+        }
+
+        if(prop_code == MTP_PROP_OBJECT_FILE_NAME) {
+            // dump the ptr
+            print_bytes("MTP FileName", ptr, length - sizeof(struct MTPHeader));
+
+            char* name = ReadMTPString(ptr);
+            char* full_path = malloc(sizeof(char) * 256);
+
+            merge_path(full_path, get_base_path_from_storage_id(persistence.params[2]), name);
+
+            // if(!storage_file_exists(mtp->storage, full_path)) {
+            //     if(!storage_file_rename(mtp->storage, path, full_path)) {
+            //         FURI_LOG_E("MTP", "Failed to rename file: %s to %s", path, full_path);
+            //         send_mtp_response(
+            //             mtp, 3, MTP_RESP_GENERAL_ERROR, persistence.transaction_id, NULL);
+            //         free(full_path);
+            //         free(name);
+            //         return;
+            //     }
+            // }
+
+            update_object_handle_path(mtp, handle, full_path);
+            send_mtp_response(mtp, 3, MTP_RESP_OK, persistence.transaction_id, NULL);
+            free(full_path);
+            free(name);
+        } else {
+            FURI_LOG_W("MTP", "Unsupported property code: 0x%04lx", prop_code);
+            send_mtp_response(
+                mtp, 3, MTP_RESP_INVALID_OBJECT_PROP_CODE, persistence.transaction_id, NULL);
         }
     }
 
@@ -458,7 +504,39 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
 
         break;
     }
+    case MTP_OP_MOVE_OBJECT: {
+        FURI_LOG_I("MTP", "MoveObject operation");
+        // Process the MoveObject operation
+        MoveObject(
+            mtp,
+            container->header.transaction_id,
+            container->params[0],
+            container->params[1],
+            container->params[2]);
+        break;
+    }
+    case MTP_OP_POWER_DOWN: {
+        FURI_LOG_I("MTP", "PowerDown operation");
+
+        FURI_LOG_I("MTP", "Good night.");
+        send_mtp_response(mtp, 3, MTP_RESP_OK, container->header.transaction_id, NULL);
+
+        furi_hal_power_off();
+        break;
+    }
     // Handle other bulk operations here...
+    case MTP_OP_GET_OBJECT_PROP_VALUE: {
+        FURI_LOG_I("MTP", "GetObjectPropValue operation");
+        // Process the GetObjectPropValue operation
+        GetObjectPropValue(
+            mtp, container->header.transaction_id, container->params[0], container->params[1]);
+        break;
+    }
+    case MTP_OP_SET_OBJECT_PROP_VALUE: {
+        FURI_LOG_I("MTP", "SetObjectPropValue operation");
+        setup_persistence(container);
+        break;
+    }
     default:
         FURI_LOG_W("MTP", "Unsupported MTP operation in bulk transfer: 0x%04x", mtp_op);
         send_mtp_response(mtp, 3, MTP_RESP_UNKNOWN, container->header.transaction_id, NULL);
@@ -522,7 +600,7 @@ char* get_path_from_handle(AppMTP* mtp, uint32_t handle) {
 }
 
 uint32_t issue_object_handle(AppMTP* mtp, char* path) {
-    int handle = 0;
+    int handle = 1;
     int length = strlen(path);
     char* path_store = malloc(sizeof(char) * (length + 1));
     strcpy(path_store, path);
@@ -556,6 +634,19 @@ uint32_t issue_object_handle(AppMTP* mtp, char* path) {
     current->path = path_store;
     current->next = NULL;
     return handle;
+}
+
+uint32_t update_object_handle_path(AppMTP* mtp, uint32_t handle, char* path) {
+    FileHandle* current = mtp->handles;
+    while(current != NULL) {
+        if(current->handle == handle) {
+            free(current->path);
+            current->path = path;
+            return handle;
+        }
+        current = current->next;
+    }
+    return 0;
 }
 
 char* get_base_path_from_storage_id(uint32_t storage_id) {
@@ -827,6 +918,24 @@ int GetDevicePropValue(uint32_t prop_code, uint8_t* buffer) {
         WriteMTPString(ptr, "Flipper Zero", &length);
         ptr += length;
         break;
+    case 0x5001: {
+        // Battery level
+        Power* power = furi_record_open(RECORD_POWER);
+        FURI_LOG_I("MTP", "Getting battery level");
+        if(power == NULL) {
+            *(uint8_t*)ptr = 0x00;
+        } else {
+            PowerInfo info;
+            power_get_info(power, &info);
+
+            FURI_LOG_I("MTP", "Battery level: %d", info.charge);
+
+            *(uint8_t*)ptr = info.charge;
+            furi_record_close(RECORD_POWER);
+        }
+        ptr += sizeof(uint8_t);
+        break;
+    }
     default:
         // Unsupported property
         break;
@@ -850,8 +959,8 @@ int GetDevicePropDesc(uint32_t prop_code, uint8_t* buffer) {
         ptr += 2;
 
         // read-only
-        *(uint16_t*)ptr = 0x0000;
-        ptr += 2;
+        *(uint8_t*)ptr = 0x00;
+        ptr += 1;
 
         length = GetDevicePropValue(prop_code, ptr);
         ptr += length;
@@ -860,9 +969,33 @@ int GetDevicePropDesc(uint32_t prop_code, uint8_t* buffer) {
         ptr += length;
 
         // no-form
-        *(uint16_t*)ptr = 0x0000;
-        ptr += 2;
+        *(uint8_t*)ptr = 0x00;
+        ptr += 1;
         break;
+    case 0x5001:
+        // Device friendly name
+        *(uint16_t*)ptr = prop_code;
+        ptr += 2;
+
+        // type is uint8
+        *(uint16_t*)ptr = 0x0002;
+        ptr += 2;
+
+        // read-only
+        *(uint8_t*)ptr = 0x00;
+        ptr += 1;
+
+        length = GetDevicePropValue(prop_code, ptr);
+        ptr += length;
+
+        length = GetDevicePropValue(prop_code, ptr);
+        ptr += length;
+
+        // no-form
+        *(uint8_t*)ptr = 0x00;
+        ptr += 1;
+        break;
+
     default:
         // Unsupported property
         break;
@@ -1037,28 +1170,35 @@ int BuildDeviceInfo(uint8_t* buffer) {
     ptr += length;
 
     // Functional mode
+    FURI_LOG_I("MTP", "MTP Functional Mode");
     *(uint16_t*)ptr = MTP_FUNCTIONAL_MODE;
     ptr += sizeof(uint16_t);
 
     // Operations supported
+    FURI_LOG_I("MTP", "Writing Operation Supported");
     length = sizeof(supported_operations) / sizeof(uint16_t);
     *(uint32_t*)ptr = length; // Number of supported operations
+    FURI_LOG_I("MTP", "Supported Operations: %d", length);
     ptr += sizeof(uint32_t);
 
     for(int i = 0; i < length; i++) {
+        FURI_LOG_I("MTP", "Operation: %04x", supported_operations[i]);
         *(uint16_t*)ptr = supported_operations[i];
         ptr += sizeof(uint16_t);
     }
 
     // Supported events (example, add as needed)
+    FURI_LOG_I("MTP", "Supported Events");
     *(uint32_t*)ptr = 0; // Number of supported events
     ptr += sizeof(uint32_t);
 
+    FURI_LOG_I("MTP", "Supported Device Properties");
     length = sizeof(supported_device_properties) / sizeof(uint16_t);
     *(uint32_t*)ptr = length; // Number of supported device properties
     ptr += sizeof(uint32_t);
 
     for(int i = 0; i < length; i++) {
+        FURI_LOG_I("MTP", "Supported Device Props");
         *(uint16_t*)ptr = supported_device_properties[i];
         ptr += sizeof(uint16_t);
     }
@@ -1068,6 +1208,7 @@ int BuildDeviceInfo(uint8_t* buffer) {
     ptr += sizeof(uint32_t);
 
     // Supported playback formats (example, add as needed)
+    FURI_LOG_I("MTP", "Supported Playback Formats");
     length = sizeof(supported_playback_formats) / sizeof(uint16_t);
     *(uint32_t*)ptr = length; // Number of supported playback formats
     ptr += sizeof(uint32_t);
@@ -1090,8 +1231,18 @@ int BuildDeviceInfo(uint8_t* buffer) {
     ptr += length;
 
     // Serial number
-    WriteMTPString(ptr, MTP_DEVICE_SERIAL, &length);
+    char* serial = malloc(sizeof(char) * furi_hal_version_uid_size() * 2 + 1);
+    const uint8_t* uid = furi_hal_version_uid();
+    for(size_t i = 0; i < furi_hal_version_uid_size(); i++) {
+        serial[i * 2] = byte_to_hex(uid[i] >> 4);
+        serial[i * 2 + 1] = byte_to_hex(uid[i] & 0x0F);
+    }
+    serial[furi_hal_version_uid_size() * 2] = '\0';
+
+    WriteMTPString(ptr, serial, &length);
     ptr += length;
+
+    free(serial);
 
     return ptr - buffer;
 }
@@ -1254,4 +1405,158 @@ bool DeleteObject(AppMTP* mtp, uint32_t handle) {
     }
 
     return false;
+}
+
+void MoveObject(
+    AppMTP* mtp,
+    uint32_t transaction_id,
+    uint32_t handle,
+    uint32_t storage_id,
+    uint32_t parent) {
+    UNUSED(storage_id);
+
+    FURI_LOG_I("MTP", "Moving object %ld to storage %ld, parent %ld", handle, storage_id, parent);
+    char* path = get_path_from_handle(mtp, handle);
+    if(path == NULL) {
+        send_mtp_response(
+            mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_OBJECT_HANDLE, transaction_id, NULL);
+        return;
+    }
+
+    char* parentPath;
+
+    if(parent != 0) {
+        parentPath = get_path_from_handle(mtp, parent);
+        if(parentPath == NULL) {
+            send_mtp_response(
+                mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_OBJECT_HANDLE, transaction_id, NULL);
+            return;
+        }
+    } else {
+        parentPath = get_base_path_from_storage_id(storage_id);
+    }
+
+    Storage* storage = mtp->storage;
+
+    char* filename = strrchr(path, '/');
+    // remove the beginning slash
+    char* realFilename = filename + 1;
+
+    char* newPath = malloc(sizeof(char) * 256);
+    merge_path(newPath, parentPath, realFilename);
+
+    FURI_LOG_I("MTP", "Moving object: %s to %s", path, newPath);
+
+    if(storage_common_rename(storage, path, newPath) != FSE_OK) {
+        FURI_LOG_E("MTP", "Failed to move object: %s", path);
+        send_mtp_response(
+            mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_OBJECT_HANDLE, transaction_id, NULL);
+        return;
+    }
+
+    FURI_LOG_I("MTP", "Object moved successfully");
+    send_mtp_response(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL);
+
+    update_object_handle_path(mtp, handle, newPath);
+    free(path);
+
+    return;
+}
+
+int GetObjectPropValueInternal(AppMTP* mtp, const char* path, uint32_t prop_code, uint8_t* buffer) {
+    UNUSED(mtp);
+    uint8_t* ptr = buffer;
+    uint16_t length;
+
+    switch(prop_code) {
+    case MTP_PROP_STORAGE_ID: {
+        FURI_LOG_I("MTP", "Getting storage ID for object: %s", path);
+
+        *(uint32_t*)ptr = prop_code;
+        ptr += sizeof(uint32_t);
+
+        *(uint32_t*)ptr = 0x0006;
+        ptr += sizeof(uint32_t);
+
+        *(uint8_t*)ptr = 0x00;
+        ptr += sizeof(uint8_t);
+
+        if(memcmp(path, STORAGE_INT_PATH_PREFIX, strlen(STORAGE_INT_PATH_PREFIX)) == 0) {
+            *(uint32_t*)ptr = INTERNAL_STORAGE_ID;
+        } else if(memcmp(path, STORAGE_EXT_PATH_PREFIX, strlen(STORAGE_EXT_PATH_PREFIX)) == 0) {
+            *(uint32_t*)ptr = EXTERNAL_STORAGE_ID;
+        } else {
+            *(uint32_t*)ptr = 0;
+        }
+        ptr += sizeof(uint32_t);
+
+        *(uint8_t*)ptr = 0x00;
+        break;
+    }
+    case MTP_PROP_OBJECT_FORMAT: {
+        FURI_LOG_I("MTP", "Getting object format for object: %s", path);
+
+        *(uint32_t*)ptr = prop_code;
+        ptr += sizeof(uint32_t);
+
+        *(uint32_t*)ptr = 0x0006;
+        ptr += sizeof(uint32_t);
+
+        *(uint8_t*)ptr = 0x00;
+        ptr += sizeof(uint8_t);
+
+        *(uint16_t*)ptr = MTP_FORMAT_UNDEFINED;
+        ptr += sizeof(uint16_t);
+
+        *(uint8_t*)ptr = 0x00;
+        break;
+    }
+    case MTP_PROP_OBJECT_FILE_NAME: {
+        FURI_LOG_I("MTP", "Getting object file name for object: %s", path);
+
+        *(uint32_t*)ptr = prop_code;
+        ptr += sizeof(uint32_t);
+
+        *(uint32_t*)ptr = 0xffff;
+        ptr += sizeof(uint32_t);
+
+        *(uint8_t*)ptr = 0x00;
+        ptr += sizeof(uint8_t);
+
+        char* file_name = strrchr(path, '/');
+        WriteMTPString(ptr, file_name + 1, &length);
+        ptr += length;
+
+        *(uint8_t*)ptr = 0x00;
+        break;
+    }
+    }
+
+    return ptr - buffer;
+}
+
+void GetObjectPropValue(AppMTP* mtp, uint32_t transaction_id, uint32_t handle, uint32_t prop_code) {
+    FURI_LOG_I(
+        "MTP", "Getting object property value for handle %ld, prop code %04lx", handle, prop_code);
+
+    char* path = get_path_from_handle(mtp, handle);
+    if(path == NULL) {
+        send_mtp_response(
+            mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_OBJECT_HANDLE, transaction_id, NULL);
+        return;
+    }
+
+    uint8_t* buffer = malloc(sizeof(uint8_t) * 256);
+    int length = GetObjectPropValueInternal(mtp, path, prop_code, buffer);
+    if(length < 0) {
+        send_mtp_response(
+            mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_OBJECT_HANDLE, transaction_id, NULL);
+        free(buffer);
+        return;
+    }
+
+    send_mtp_response_buffer(
+        mtp, MTP_TYPE_DATA, MTP_OP_GET_OBJECT_PROP_VALUE, transaction_id, buffer, length);
+    send_mtp_response(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL);
+    free(buffer);
 }
