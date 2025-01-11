@@ -41,7 +41,6 @@ Here are some things you should know before using this application:
 >
 > - **Corrupt the SD Card filesystem** due to current implementation's limitation.
 >   (If you know how to fix this issue, feel free to give me a PR!, quick `chkdsk` will fix the corruption though)
-> - This _might_ be due to [flipperzero-firmware#3452](https://github.com/flipperdevices/flipperzero-firmware/issues/3452), but not throughly tested.
 
 > [!WARNING]  
 > **DO NOT** use `UNICODE` characters in the file/directory names.  
