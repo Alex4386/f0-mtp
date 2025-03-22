@@ -71,7 +71,7 @@ Here are some things you should know before using this application:
 
 - Renaming directories, files are not supported yet.
 - Fix "memory leaks"
-  - I'm currently busy working on code cleanup. So, I can't afford to do this right now.
+  - TODO: Buy Wi-Fi Development Board for Remote GDB Attachment
 
 ## How to build
 
