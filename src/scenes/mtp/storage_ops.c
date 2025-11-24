@@ -98,8 +98,8 @@ int list_and_issue_handles(
 
     int count = 0;
     FileInfo fileinfo;
-    char* file_name = malloc(sizeof(char) * 256);
-    char* full_path = malloc(sizeof(char) * 256);
+    char file_name[256];
+    char full_path[256];
     while(storage_dir_read(dir, &fileinfo, file_name, 256)) {
         if(file_info_is_dir(&fileinfo)) {
             FURI_LOG_I("MTP", "Found directory: %s", file_name);
@@ -124,7 +124,5 @@ int list_and_issue_handles(
 
     storage_dir_close(dir);
     storage_file_free(dir);
-    free(file_name);
-    free(full_path);
     return count;
 }

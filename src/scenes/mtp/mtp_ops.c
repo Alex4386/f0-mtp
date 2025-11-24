@@ -277,7 +277,7 @@ void MoveObject(
     // remove the beginning slash
     char* realFilename = filename + 1;
 
-    char* newPath = malloc(sizeof(char) * 256);
+    char newPath[256];
     merge_path(newPath, parentPath, realFilename);
 
     FURI_LOG_I("MTP", "Moving object: %s to %s", path, newPath);
@@ -381,17 +381,15 @@ void GetObjectPropValue(AppMTP* mtp, uint32_t transaction_id, uint32_t handle, u
         return;
     }
 
-    uint8_t* buffer = malloc(sizeof(uint8_t) * 256);
+    uint8_t buffer[256];
     int length = GetObjectPropValueInternal(mtp, path, prop_code, buffer);
     if(length < 0) {
         send_mtp_response(
             mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_OBJECT_HANDLE, transaction_id, NULL);
-        free(buffer);
         return;
     }
 
     send_mtp_response_buffer(
         mtp, MTP_TYPE_DATA, MTP_OP_GET_OBJECT_PROP_VALUE, transaction_id, buffer, length);
     send_mtp_response(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL);
-    free(buffer);
 }

@@ -106,21 +106,19 @@ int GetDevicePropDescInternal(uint32_t prop_code, uint8_t* buffer) {
 }
 
 void GetDevicePropValue(AppMTP* mtp, uint32_t transaction_id, uint32_t prop_code) {
-    uint8_t* response = malloc(sizeof(uint8_t) * MTP_BUFFER_SIZE);
+    uint8_t response[MTP_BUFFER_SIZE];
     int length = GetDevicePropValueInternal(prop_code, response);
     send_mtp_response_buffer(
         mtp, MTP_TYPE_DATA, MTP_OP_GET_DEVICE_PROP_VALUE, transaction_id, response, length);
     send_mtp_response_buffer(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL, 0);
-    free(response);
 }
 
 void GetDevicePropDesc(AppMTP* mtp, uint32_t transaction_id, uint32_t prop_code) {
-    uint8_t* response = malloc(sizeof(uint8_t) * MTP_BUFFER_SIZE);
+    uint8_t response[MTP_BUFFER_SIZE];
     int length = GetDevicePropDescInternal(prop_code, response);
     send_mtp_response_buffer(
         mtp, MTP_TYPE_DATA, MTP_OP_GET_DEVICE_PROP_DESC, transaction_id, response, length);
     send_mtp_response_buffer(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL, 0);
-    free(response);
 }
 
 int BuildDeviceInfo(uint8_t* buffer) {
@@ -202,11 +200,15 @@ int BuildDeviceInfo(uint8_t* buffer) {
 
     // Device version
     const Version* ver = furi_hal_version_get_firmware_version();
-    WriteMTPString(ptr, version_get_version(ver), &length);
+    const char* version_str = ver ? version_get_version(ver) : NULL;
+    if(!version_str || strlen(version_str) == 0) {
+        version_str = "1.0";
+    }
+    WriteMTPString(ptr, version_str, &length);
     ptr += length;
 
     // Serial number
-    char* serial = malloc(sizeof(char) * furi_hal_version_uid_size() * 2 + 1);
+    char serial[64]; // Large enough for any UID (typically 8-16 bytes -> 16-32 chars + null)
     const uint8_t* uid = furi_hal_version_uid();
     for(size_t i = 0; i < furi_hal_version_uid_size(); i++) {
         serial[i * 2] = byte_to_hex(uid[i] >> 4);
@@ -216,8 +218,6 @@ int BuildDeviceInfo(uint8_t* buffer) {
 
     WriteMTPString(ptr, serial, &length);
     ptr += length;
-
-    free(serial);
 
     return ptr - buffer;
 }

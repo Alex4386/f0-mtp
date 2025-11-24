@@ -160,9 +160,10 @@ void handle_mtp_data_packet(AppMTP* mtp, uint8_t* buffer, int32_t length, bool c
             // dump the ptr
             print_bytes("MTP FileName", ptr, length - sizeof(struct MTPHeader));
 
-            char* name = ReadMTPString(ptr);
-            char* full_path = malloc(sizeof(char) * MTP_PATH_SIZE);
+            char name[MTP_NAME_SIZE];
+            char full_path[MTP_PATH_SIZE];
 
+            ReadMTPStringToBuffer(ptr, name, sizeof(name));
             merge_path(full_path, get_base_path_from_storage_id(persistence.params[2]), name);
 
             // if(!storage_file_exists(mtp->storage, full_path)) {
@@ -170,16 +171,12 @@ void handle_mtp_data_packet(AppMTP* mtp, uint8_t* buffer, int32_t length, bool c
             //         FURI_LOG_E("MTP", "Failed to rename file: %s to %s", path, full_path);
             //         send_mtp_response(
             //             mtp, 3, MTP_RESP_GENERAL_ERROR, persistence.transaction_id, NULL);
-            //         free(full_path);
-            //         free(name);
             //         return;
             //     }
             // }
 
             update_object_handle_path(mtp, handle, full_path);
             send_mtp_response(mtp, 3, MTP_RESP_OK, persistence.transaction_id, NULL);
-            free(full_path);
-            free(name);
         } else {
             FURI_LOG_W("MTP", "Unsupported property code: 0x%04lx", prop_code);
             send_mtp_response(
@@ -221,23 +218,21 @@ void handle_mtp_data_complete(AppMTP* mtp) {
             "MTP FileName", ptr, persistence.buffer_offset - sizeof(struct ObjectInfoHeader));
 
         bool is_dir = info->format == MTP_FORMAT_ASSOCIATION;
-        char* name = NULL;
+        char name[MTP_NAME_SIZE];
         if(CheckMTPStringHasUnicode(ptr)) {
             // unicode isn't supported
-            name = is_dir ? "New Folder" : "New File";
+            strcpy(name, is_dir ? "New Folder" : "New File");
         } else {
-            name = ReadMTPString(ptr);
+            ReadMTPStringToBuffer(ptr, name, sizeof(name));
         }
 
         // if the name is blank, generate random name
-        if(*name == 0) {
-            char* random_name = malloc(sizeof(char) * 10);
-            strcpy(random_name, "file_");
+        if(name[0] == 0) {
+            strcpy(name, "file_");
             int random = rand() % 1000;
             char random_str[4];
             itoa(random, random_str, 10);
-            strcpy(random_name + 5, random_str);
-            name = random_name;
+            strcpy(name + 5, random_str);
         }
 
         FURI_LOG_I("MTP", "Creating object: %s", name);
@@ -263,7 +258,7 @@ void handle_mtp_data_complete(AppMTP* mtp) {
             }
         }
 
-        char* full_path = malloc(sizeof(char) * MTP_PATH_SIZE);
+        char full_path[MTP_PATH_SIZE];
         merge_path(full_path, base_path, name);
 
         FURI_LOG_I("MTP", "Format: %04x", info->format);
@@ -274,7 +269,6 @@ void handle_mtp_data_complete(AppMTP* mtp) {
                     FURI_LOG_E("MTP", "Failed to create directory: %s", full_path);
                     send_mtp_response(
                         mtp, 3, MTP_RESP_GENERAL_ERROR, persistence.transaction_id, NULL);
-                    free(full_path);
                     break;
                 }
             }
@@ -287,7 +281,6 @@ void handle_mtp_data_complete(AppMTP* mtp) {
                     send_mtp_response(
                         mtp, 3, MTP_RESP_GENERAL_ERROR, persistence.transaction_id, NULL);
                     storage_file_free(file);
-                    free(full_path);
                     break;
                 }
 
@@ -301,8 +294,6 @@ void handle_mtp_data_complete(AppMTP* mtp) {
         uint32_t handle = issue_object_handle(mtp, full_path);
         persistence.params[2] = handle;
 
-        free(name);
-        free(full_path);
         send_mtp_response(mtp, 3, MTP_RESP_OK, persistence.transaction_id, persistence.params);
 
         break;
@@ -346,7 +337,7 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
         break;
     case MTP_OP_GET_STORAGE_INFO: {
         FURI_LOG_I("MTP", "GetStorageInfo operation");
-        uint8_t* info = malloc(sizeof(uint8_t) * MTP_BUFFER_SIZE);
+        uint8_t info[MTP_BUFFER_SIZE];
         int length = GetStorageInfo(mtp, container->params[0], info);
         send_mtp_response_buffer(
             mtp,
@@ -357,7 +348,6 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
             length);
         send_mtp_response_buffer(
             mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, container->header.transaction_id, NULL, 0);
-        free(info);
         break;
     }
     case MTP_OP_GET_OBJECT_HANDLES:
@@ -372,7 +362,7 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
                 0);
             break;
         } else {
-            uint8_t* buffer = malloc(sizeof(uint8_t) * MTP_BUFFER_SIZE);
+            uint8_t buffer[MTP_BUFFER_SIZE];
             int length = GetObjectHandles(mtp, container->params[0], container->params[2], buffer);
             send_mtp_response_buffer(
                 mtp,
@@ -384,12 +374,11 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
 
             send_mtp_response_buffer(
                 mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, container->header.transaction_id, NULL, 0);
-            free(buffer);
         }
         break;
     case MTP_OP_GET_OBJECT_INFO: {
         FURI_LOG_I("MTP", "GetObjectInfo operation");
-        uint8_t* buffer = malloc(sizeof(uint8_t) * MTP_BUFFER_SIZE);
+        uint8_t buffer[MTP_BUFFER_SIZE];
         int length = GetObjectInfo(mtp, container->params[0], buffer);
 
         if(length < 0) {
@@ -409,7 +398,6 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
             container->header.transaction_id,
             buffer,
             length);
-        free(buffer);
 
         send_mtp_response_buffer(
             mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, container->header.transaction_id, NULL, 0);
@@ -417,7 +405,7 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
     }
     case MTP_OP_GET_OBJECT_PROPS_SUPPORTED: {
         FURI_LOG_I("MTP", "GetObjectPropsSupported operation");
-        uint8_t* buffer = malloc(sizeof(uint8_t) * MTP_BUFFER_SIZE);
+        uint8_t buffer[MTP_BUFFER_SIZE];
         uint32_t count = sizeof(supported_object_props) / sizeof(uint16_t);
         memcpy(buffer, &count, sizeof(uint32_t));
         memcpy(buffer + sizeof(uint32_t), supported_object_props, sizeof(uint16_t) * count);
@@ -430,7 +418,6 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
             container->header.transaction_id,
             buffer,
             length);
-        free(buffer);
         send_mtp_response_buffer(
             mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, container->header.transaction_id, NULL, 0);
         break;
@@ -528,12 +515,11 @@ void send_storage_ids(AppMTP* mtp, uint32_t transaction_id) {
 }
 
 void send_device_info(AppMTP* mtp, uint32_t transaction_id) {
-    uint8_t* response = malloc(sizeof(uint8_t) * MTP_BUFFER_SIZE);
+    uint8_t response[MTP_BUFFER_SIZE];
     int length = BuildDeviceInfo(response);
     send_mtp_response_buffer(
         mtp, MTP_TYPE_DATA, MTP_OP_GET_DEVICE_INFO, transaction_id, response, length);
     send_mtp_response_buffer(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL, 0);
-    free(response);
 }
 
 int GetNumObjects(AppMTP* mtp, uint32_t storage_id, uint32_t association) {
@@ -549,8 +535,8 @@ void send_mtp_response_stream(
     uint32_t length) {
     int chunk_idx = 0;
 
+    uint8_t buffer[MTP_MAX_PACKET_SIZE];
     size_t buffer_available = MTP_MAX_PACKET_SIZE;
-    uint8_t* buffer = malloc(sizeof(uint8_t) * buffer_available);
     uint8_t* ptr = buffer;
 
     uint32_t sent_length = 0;
@@ -589,8 +575,6 @@ void send_mtp_response_stream(
             sent_length - sizeof(struct MTPHeader),
             length);
     } while(sent_length < length + sizeof(struct MTPHeader));
-
-    free(buffer);
 }
 
 int send_mtp_response_buffer_callback(void* ctx, uint8_t* buffer, int size) {

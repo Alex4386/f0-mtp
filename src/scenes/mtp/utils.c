@@ -10,7 +10,7 @@ void print_bytes(char* tag, uint8_t* bytes, size_t len) {
     FURI_LOG_I("MTP", "Dumping bytes - TAG: %s", tag);
     int lines = len > 0 ? (len / 16) + 1 : 0;
     size_t last_line_len = len % 16;
-    char* line = (char*)malloc(16 * 3 + 3 + 16 + 1);
+    char line[16 * 3 + 3 + 16 + 1]; // Stack allocation: 52 bytes
     for(int i = 0; i < lines; i++) {
         int line_len = i == lines - 1 ? last_line_len : 16;
         for(int j = 0; j < 16; j++) {
@@ -37,7 +37,6 @@ void print_bytes(char* tag, uint8_t* bytes, size_t len) {
         line[16 * 3 + 3 + line_len] = '\0';
         FURI_LOG_I("MTP", line);
     }
-    free(line);
     FURI_LOG_I("MTP", "End of dump - TAG: %s", tag);
 }
 
@@ -65,26 +64,41 @@ bool CheckMTPStringHasUnicode(uint8_t* buffer) {
     return false;
 }
 
-char* ReadMTPString(uint8_t* buffer) {
+void ReadMTPStringToBuffer(uint8_t* buffer, char* output, size_t output_size) {
     int len16 = *(uint8_t*)buffer;
     if(len16 == 0) {
-        return "";
+        output[0] = '\0';
+        return;
     }
-
-    char* str = malloc(sizeof(char) * len16);
 
     uint8_t* base = buffer + 1;
     uint16_t* ptr = (uint16_t*)base;
 
-    for(int i = 0; i < len16; i++) {
-        str[i] = *ptr++;
-    }
+    // Ensure we don't overflow the output buffer
+    int copy_len = len16 < output_size - 1 ? len16 : output_size - 1;
 
-    return str;
+    for(int i = 0; i < copy_len; i++) {
+        output[i] = (char)(*ptr++);
+    }
+    output[copy_len] = '\0';
+}
+
+const char* ReadMTPString(uint8_t* buffer) {
+    static char static_buffer[256]; // Static buffer for simple cases
+    ReadMTPStringToBuffer(buffer, static_buffer, sizeof(static_buffer));
+    return static_buffer;
 }
 
 void WriteMTPString(uint8_t* buffer, const char* str, uint16_t* length) {
     uint8_t* ptr = buffer;
+
+    // Handle NULL string
+    if(str == NULL) {
+        *ptr = 0x00;
+        *length = 1;
+        return;
+    }
+
     uint8_t str_len = strlen(str);
 
     FURI_LOG_I("MTP", "Writing MTP string: %s", str);
