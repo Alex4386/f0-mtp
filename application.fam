@@ -13,7 +13,12 @@ App(
       "src/*.c*",        # you need to specify nested directories
       "src/*/*.c*",      # manually since it doesn't support
       "src/*/*/*.c*"     # recurse globbing such as "src/**/*.c*"
-    ], 
+    ],
+
+    # Activate the FLIPPER_ZERO-guarded code paths (USB descriptors, main
+    # entry, Flipper SDK adapters). Host-side test builds leave this
+    # undefined so the same translation units compile against fake APIs.
+    cdefines=["FLIPPER_ZERO"], 
 
     # Dependencies
     requires=[
