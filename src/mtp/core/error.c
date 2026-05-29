@@ -89,8 +89,7 @@ void mtp_error_context_set(
     int line,
     const char* function,
     const char* fmt,
-    ...
-) {
+    ...) {
     ctx->code = code;
     ctx->file = file;
     ctx->line = line;

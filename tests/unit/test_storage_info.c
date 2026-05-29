@@ -45,17 +45,19 @@ TEST(storage_info_header_layout) {
 
     // max_capacity_blocks LE u64 = 1000
     uint64_t cap = 0;
-    for(int i = 0; i < 8; i++) cap |= ((uint64_t)buf[6 + i]) << (i * 8);
+    for(int i = 0; i < 8; i++)
+        cap |= ((uint64_t)buf[6 + i]) << (i * 8);
     ASSERT_EQ((long)cap, 1000l);
 
     // free_space_blocks LE u64 = 500
     uint64_t freev = 0;
-    for(int i = 0; i < 8; i++) freev |= ((uint64_t)buf[14 + i]) << (i * 8);
+    for(int i = 0; i < 8; i++)
+        freev |= ((uint64_t)buf[14 + i]) << (i * 8);
     ASSERT_EQ((long)freev, 500l);
 
     // free_space_in_objects LE u32 = 20
-    uint32_t freeobj = (uint32_t)buf[22] | ((uint32_t)buf[23] << 8) |
-                       ((uint32_t)buf[24] << 16) | ((uint32_t)buf[25] << 24);
+    uint32_t freeobj = (uint32_t)buf[22] | ((uint32_t)buf[23] << 8) | ((uint32_t)buf[24] << 16) |
+                       ((uint32_t)buf[25] << 24);
     ASSERT_EQ(freeobj, (uint32_t)20);
 
     TEST_PASS();

@@ -32,7 +32,4 @@ typedef struct {
 //
 // Layout matches the MTP 1.1 spec, byte-for-byte compatible with src.old's
 // BuildDeviceInfo() output.
-size_t mtp_build_device_info(
-    const MTPDeviceInfoInput* in,
-    uint8_t* buffer,
-    size_t buffer_size);
+size_t mtp_build_device_info(const MTPDeviceInfoInput* in, uint8_t* buffer, size_t buffer_size);

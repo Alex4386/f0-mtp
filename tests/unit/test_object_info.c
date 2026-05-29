@@ -32,8 +32,8 @@ TEST(object_info_fixed_layout_starts_with_storage_id) {
     MTPObjectInfoInput in = sample();
     size_t n = mtp_build_object_info(&in, buf, sizeof(buf));
     ASSERT(n > 4);
-    uint32_t storage_id = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) |
-                          ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
+    uint32_t storage_id = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) |
+                          ((uint32_t)buf[3] << 24);
     ASSERT_EQ(storage_id, (uint32_t)MTP_STORAGE_ID_EXTERNAL);
     TEST_PASS();
 }

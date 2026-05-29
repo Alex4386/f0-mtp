@@ -17,7 +17,7 @@ MTPString* mtp_string_create(const char* utf8_str) {
     // For ASCII strings, length is same
     // For full Unicode, would need proper UTF-8 to UTF-16 conversion
     // Current implementation assumes ASCII (like original code)
-    str->length = utf8_len + 1;  // +1 for null terminator
+    str->length = utf8_len + 1; // +1 for null terminator
 
     str->data = malloc(sizeof(uint16_t) * str->length);
     if(!str->data) {
@@ -29,7 +29,7 @@ MTPString* mtp_string_create(const char* utf8_str) {
     for(size_t i = 0; i < utf8_len; i++) {
         str->data[i] = (uint16_t)(uint8_t)utf8_str[i];
     }
-    str->data[utf8_len] = 0;  // Null terminator
+    str->data[utf8_len] = 0; // Null terminator
 
     return str;
 }
@@ -61,13 +61,13 @@ char* mtp_string_decode(const uint8_t* buffer, size_t buffer_size) {
     }
 
     // Check buffer has enough data
-    size_t required_size = 1 + (length * 2);  // length byte + UTF-16LE chars
+    size_t required_size = 1 + (length * 2); // length byte + UTF-16LE chars
     if(buffer_size < required_size) {
         return NULL;
     }
 
     // Allocate result buffer
-    char* result = malloc(length);  // length includes null terminator
+    char* result = malloc(length); // length includes null terminator
     if(!result) {
         return NULL;
     }
@@ -131,8 +131,8 @@ size_t mtp_string_write(uint8_t* buffer, const char* utf8_str) {
 
     // Write characters in UTF-16LE (ASCII expansion)
     for(size_t i = 0; i < str_len; i++) {
-        *ptr++ = (uint8_t)utf8_str[i];  // Low byte
-        *ptr++ = 0x00;                   // High byte (0 for ASCII)
+        *ptr++ = (uint8_t)utf8_str[i]; // Low byte
+        *ptr++ = 0x00; // High byte (0 for ASCII)
     }
 
     // Write null terminator

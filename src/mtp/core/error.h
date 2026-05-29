@@ -55,17 +55,15 @@ void mtp_error_context_set(
     int line,
     const char* function,
     const char* fmt,
-    ...
-) __attribute__((format(printf, 6, 7)));
+    ...) __attribute__((format(printf, 6, 7)));
 
 void mtp_error_context_clear(MTPErrorContext* ctx);
 
 // Helper macros
 #define MTP_SET_ERROR(error_ctx, error_code, fmt, ...) \
-    mtp_error_context_set((error_ctx), (error_code), __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    mtp_error_context_set(                             \
+        (error_ctx), (error_code), __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
-#define MTP_CLEAR_ERROR(error_ctx) \
-    mtp_error_context_clear(error_ctx)
+#define MTP_CLEAR_ERROR(error_ctx) mtp_error_context_clear(error_ctx)
 
-#define MTP_HAS_ERROR(error_ctx) \
-    ((error_ctx)->code != MTP_ERROR_NONE)
+#define MTP_HAS_ERROR(error_ctx) ((error_ctx)->code != MTP_ERROR_NONE)

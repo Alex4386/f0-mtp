@@ -32,10 +32,7 @@ typedef struct {
 
 // Serialize a GetStorageInfo response payload into `buffer`.
 // Returns bytes written, or 0 on failure / overflow.
-size_t mtp_build_storage_info(
-    const MTPStorageInfoInput* in,
-    uint8_t* buffer,
-    size_t buffer_size);
+size_t mtp_build_storage_info(const MTPStorageInfoInput* in, uint8_t* buffer, size_t buffer_size);
 
 // Convenience: convert raw byte counts (e.g. from storage_sd_info kb fields)
 // into MTP_BLOCK_SIZE block counts.

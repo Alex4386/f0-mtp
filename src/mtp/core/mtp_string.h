@@ -4,8 +4,8 @@
 
 // MTP String (UTF-16LE encoded)
 typedef struct {
-    uint16_t length;  // Number of characters (including null terminator)
-    uint16_t* data;   // UTF-16LE character data
+    uint16_t length; // Number of characters (including null terminator)
+    uint16_t* data; // UTF-16LE character data
 } MTPString;
 
 // Create MTP string from UTF-8/ASCII string

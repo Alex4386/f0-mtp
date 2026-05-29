@@ -9,28 +9,33 @@
 
 // MTP container header (12 bytes)
 typedef struct {
-    uint32_t length;        // Total container length including header
-    uint16_t type;          // Container type (command, data, response)
-    uint16_t code;          // Operation/Response/Event code
+    uint32_t length; // Total container length including header
+    uint16_t type; // Container type (command, data, response)
+    uint16_t code; // Operation/Response/Event code
     uint32_t transaction_id; // Transaction ID
 } MTPContainerHeader;
 
 // Container types
-#define MTP_CONTAINER_TYPE_UNDEFINED    0x0000
-#define MTP_CONTAINER_TYPE_COMMAND      0x0001
-#define MTP_CONTAINER_TYPE_DATA         0x0002
-#define MTP_CONTAINER_TYPE_RESPONSE     0x0003
-#define MTP_CONTAINER_TYPE_EVENT        0x0004
+#define MTP_CONTAINER_TYPE_UNDEFINED 0x0000
+#define MTP_CONTAINER_TYPE_COMMAND   0x0001
+#define MTP_CONTAINER_TYPE_DATA      0x0002
+#define MTP_CONTAINER_TYPE_RESPONSE  0x0003
+#define MTP_CONTAINER_TYPE_EVENT     0x0004
 
 // USB packet buffer
 #define MTP_USB_PACKET_SIZE 512
-#define MTP_USB_MAX_PAYLOAD (64 * 1024)  // 64KB max payload
+#define MTP_USB_MAX_PAYLOAD (64 * 1024) // 64KB max payload
 
 // Transport callbacks
 typedef struct MTPTransport MTPTransport;
 
-typedef bool (*MTPTransportReceiveCallback)(MTPTransport* transport, uint8_t* buffer, size_t size, size_t* received);
-typedef bool (*MTPTransportSendCallback)(MTPTransport* transport, const uint8_t* buffer, size_t size);
+typedef bool (*MTPTransportReceiveCallback)(
+    MTPTransport* transport,
+    uint8_t* buffer,
+    size_t size,
+    size_t* received);
+typedef bool (
+    *MTPTransportSendCallback)(MTPTransport* transport, const uint8_t* buffer, size_t size);
 typedef void (*MTPTransportFlushCallback)(MTPTransport* transport);
 
 // Transport structure
@@ -62,8 +67,7 @@ void mtp_transport_set_callbacks(
     MTPTransport* transport,
     MTPTransportReceiveCallback receive,
     MTPTransportSendCallback send,
-    MTPTransportFlushCallback flush
-);
+    MTPTransportFlushCallback flush);
 
 // Connection management
 void mtp_transport_connect(MTPTransport* transport);
@@ -76,15 +80,13 @@ bool mtp_transport_receive_container(
     MTPContainerHeader* header,
     uint8_t* payload,
     size_t max_payload_size,
-    size_t* payload_received
-);
+    size_t* payload_received);
 
 bool mtp_transport_send_container(
     MTPTransport* transport,
     const MTPContainerHeader* header,
     const uint8_t* payload,
-    size_t payload_size
-);
+    size_t payload_size);
 
 // Helper: Create container header
 static inline void mtp_container_header_init(
@@ -92,8 +94,7 @@ static inline void mtp_container_header_init(
     uint16_t type,
     uint16_t code,
     uint32_t transaction_id,
-    uint32_t payload_size
-) {
+    uint32_t payload_size) {
     header->length = sizeof(MTPContainerHeader) + payload_size;
     header->type = type;
     header->code = code;

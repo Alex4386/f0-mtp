@@ -20,8 +20,8 @@ static MTPContext* make_ctx(void) {
 
 TEST(get_device_prop_value_friendly_name_uses_provider) {
     MTPContext* ctx = make_ctx();
-    MTPDevicePropsProvider provider = {.get_device_name = fake_name,
-                                       .get_battery_level = fake_battery};
+    MTPDevicePropsProvider provider = {
+        .get_device_name = fake_name, .get_battery_level = fake_battery};
     mtp_device_props_install(ctx, &provider);
 
     MTPResponse* resp = mtp_response_create();
@@ -40,8 +40,8 @@ TEST(get_device_prop_value_friendly_name_uses_provider) {
 
 TEST(get_device_prop_value_battery_returns_one_byte) {
     MTPContext* ctx = make_ctx();
-    MTPDevicePropsProvider provider = {.get_device_name = fake_name,
-                                       .get_battery_level = fake_battery};
+    MTPDevicePropsProvider provider = {
+        .get_device_name = fake_name, .get_battery_level = fake_battery};
     mtp_device_props_install(ctx, &provider);
 
     MTPResponse* resp = mtp_response_create();
@@ -90,8 +90,8 @@ TEST(get_device_prop_value_unsupported_code) {
 
 TEST(get_device_prop_desc_friendly_name) {
     MTPContext* ctx = make_ctx();
-    MTPDevicePropsProvider provider = {.get_device_name = fake_name,
-                                       .get_battery_level = fake_battery};
+    MTPDevicePropsProvider provider = {
+        .get_device_name = fake_name, .get_battery_level = fake_battery};
     mtp_device_props_install(ctx, &provider);
 
     MTPResponse* resp = mtp_response_create();

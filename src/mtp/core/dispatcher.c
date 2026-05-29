@@ -94,8 +94,11 @@ bool mtp_dispatcher_send_data_and_response(
 }
 
 // Build an MTPRequest from a parsed command container.
-static void
-    build_request(MTPRequest* req, const MTPContainerHeader* header, const uint8_t* payload, size_t payload_size) {
+static void build_request(
+    MTPRequest* req,
+    const MTPContainerHeader* header,
+    const uint8_t* payload,
+    size_t payload_size) {
     req->op_code = header->code;
     req->transaction_id = header->transaction_id;
     req->data = NULL;

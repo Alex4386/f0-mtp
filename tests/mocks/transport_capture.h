@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define TRANSPORT_CAPTURE_MAX_BYTES (64 * 1024)
+#define TRANSPORT_CAPTURE_MAX_BYTES      (64 * 1024)
 #define TRANSPORT_CAPTURE_MAX_CONTAINERS 32
 
 typedef struct {

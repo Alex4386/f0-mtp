@@ -25,5 +25,4 @@ typedef void (*MTPObjectIndexIterator)(uint32_t handle, const char* path, void* 
 void mtp_object_index_foreach(
     MTPObjectIndex* index,
     MTPObjectIndexIterator callback,
-    void* user_data
-);
+    void* user_data);

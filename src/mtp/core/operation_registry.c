@@ -59,10 +59,7 @@ void mtp_operation_registry_destroy(MTPOperationRegistry* registry) {
     free(registry);
 }
 
-bool mtp_operation_registry_add(
-    MTPOperationRegistry* registry,
-    const MTPOperationEntry* entry
-) {
+bool mtp_operation_registry_add(MTPOperationRegistry* registry, const MTPOperationEntry* entry) {
     if(!registry || !entry || !entry->handler) {
         return false;
     }
@@ -95,10 +92,7 @@ bool mtp_operation_registry_add(
     return true;
 }
 
-MTPOperationHandler mtp_operation_registry_find(
-    MTPOperationRegistry* registry,
-    uint16_t op_code
-) {
+MTPOperationHandler mtp_operation_registry_find(MTPOperationRegistry* registry, uint16_t op_code) {
     if(!registry) {
         return NULL;
     }
@@ -116,10 +110,7 @@ MTPOperationHandler mtp_operation_registry_find(
     return NULL;
 }
 
-const char* mtp_operation_registry_get_name(
-    MTPOperationRegistry* registry,
-    uint16_t op_code
-) {
+const char* mtp_operation_registry_get_name(MTPOperationRegistry* registry, uint16_t op_code) {
     if(!registry) {
         return NULL;
     }
@@ -137,10 +128,7 @@ const char* mtp_operation_registry_get_name(
     return NULL;
 }
 
-bool mtp_operation_registry_contains(
-    MTPOperationRegistry* registry,
-    uint16_t op_code
-) {
+bool mtp_operation_registry_contains(MTPOperationRegistry* registry, uint16_t op_code) {
     return mtp_operation_registry_find(registry, op_code) != NULL;
 }
 
@@ -151,8 +139,7 @@ size_t mtp_operation_registry_count(MTPOperationRegistry* registry) {
 void mtp_operation_registry_foreach(
     MTPOperationRegistry* registry,
     MTPOperationIterator callback,
-    void* user_data
-) {
+    void* user_data) {
     if(!registry || !callback) {
         return;
     }

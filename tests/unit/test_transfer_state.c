@@ -19,11 +19,8 @@ static MTPContext* fresh_ctx(void) {
 // Build a minimal ObjectInfo dataset: 52 bytes of fixed header followed by
 // the filename string. The fixed bytes can be zero except for the format
 // field at offset 4.
-static size_t build_object_info_bytes(
-    uint8_t* out,
-    size_t out_size,
-    bool is_dir,
-    const char* filename) {
+static size_t
+    build_object_info_bytes(uint8_t* out, size_t out_size, bool is_dir, const char* filename) {
     memset(out, 0, 52);
     uint16_t fmt = is_dir ? MTP_FORMAT_ASSOCIATION : MTP_FORMAT_UNDEFINED;
     out[4] = (uint8_t)(fmt & 0xFF);
@@ -93,18 +90,13 @@ TEST(send_object_info_then_send_object_streams_bytes) {
     uint32_t pushed = 0;
     bool completed = false;
     uint8_t chunk[1024];
-    for(size_t i = 0; i < sizeof(chunk); i++) chunk[i] = (uint8_t)(i & 0xFF);
+    for(size_t i = 0; i < sizeof(chunk); i++)
+        chunk[i] = (uint8_t)(i & 0xFF);
 
     while(pushed < total) {
         uint32_t to_push = total - pushed > sizeof(chunk) ? sizeof(chunk) : (total - pushed);
         ASSERT(mtp_transfer_state_feed_data(
-            ctx->transfer_manager,
-            ctx,
-            chunk,
-            to_push,
-            total,
-            pushed == 0,
-            &completed));
+            ctx->transfer_manager, ctx, chunk, to_push, total, pushed == 0, &completed));
         pushed += to_push;
     }
 
@@ -142,8 +134,8 @@ TEST(send_object_info_directory_creates_dir) {
     bool done = false;
     mtp_transfer_state_feed_data(ctx->transfer_manager, ctx, buf, n, (uint32_t)n, true, &done);
 
-    uint16_t rc = mtp_transfer_state_finalize_object_info(
-        ctx->transfer_manager, ctx, NULL, NULL, NULL);
+    uint16_t rc =
+        mtp_transfer_state_finalize_object_info(ctx->transfer_manager, ctx, NULL, NULL, NULL);
     ASSERT_EQ(rc, (uint16_t)MTP_RESP_OK);
 
     Storage* s = furi_record_open("storage");

@@ -14,12 +14,8 @@ size_t mtp_register_all_operations(MTPOperationRegistry* registry) {
         {.op_code = MTP_OP_GET_DEVICE_INFO,
          .name = "get_device_info",
          .handler = mtp_op_get_device_info},
-        {.op_code = MTP_OP_OPEN_SESSION,
-         .name = "open_session",
-         .handler = mtp_op_open_session},
-        {.op_code = MTP_OP_CLOSE_SESSION,
-         .name = "close_session",
-         .handler = mtp_op_close_session},
+        {.op_code = MTP_OP_OPEN_SESSION, .name = "open_session", .handler = mtp_op_open_session},
+        {.op_code = MTP_OP_CLOSE_SESSION, .name = "close_session", .handler = mtp_op_close_session},
 
         // Storage
         {.op_code = MTP_OP_GET_STORAGE_IDS,
@@ -39,15 +35,9 @@ size_t mtp_register_all_operations(MTPOperationRegistry* registry) {
         {.op_code = MTP_OP_GET_OBJECT_INFO,
          .name = "get_object_info",
          .handler = mtp_op_get_object_info},
-        {.op_code = MTP_OP_GET_OBJECT,
-         .name = "get_object",
-         .handler = mtp_op_get_object},
-        {.op_code = MTP_OP_DELETE_OBJECT,
-         .name = "delete_object",
-         .handler = mtp_op_delete_object},
-        {.op_code = MTP_OP_MOVE_OBJECT,
-         .name = "move_object",
-         .handler = mtp_op_move_object},
+        {.op_code = MTP_OP_GET_OBJECT, .name = "get_object", .handler = mtp_op_get_object},
+        {.op_code = MTP_OP_DELETE_OBJECT, .name = "delete_object", .handler = mtp_op_delete_object},
+        {.op_code = MTP_OP_MOVE_OBJECT, .name = "move_object", .handler = mtp_op_move_object},
 
         // Properties
         {.op_code = MTP_OP_GET_OBJECT_PROPS_SUPPORTED,
@@ -72,9 +62,7 @@ size_t mtp_register_all_operations(MTPOperationRegistry* registry) {
         {.op_code = MTP_OP_SEND_OBJECT_INFO,
          .name = "send_object_info",
          .handler = mtp_op_send_object_info},
-        {.op_code = MTP_OP_SEND_OBJECT,
-         .name = "send_object",
-         .handler = mtp_op_send_object},
+        {.op_code = MTP_OP_SEND_OBJECT, .name = "send_object", .handler = mtp_op_send_object},
     };
 
     size_t registered = 0;

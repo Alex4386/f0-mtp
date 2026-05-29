@@ -59,12 +59,8 @@ static void harness_teardown(Harness* h) {
     mtp_context_destroy(h->ctx);
 }
 
-static size_t make_command(
-    uint8_t* buf,
-    uint16_t op,
-    uint32_t tx,
-    const uint32_t* params,
-    uint8_t pcount) {
+static size_t
+    make_command(uint8_t* buf, uint16_t op, uint32_t tx, const uint32_t* params, uint8_t pcount) {
     MTPContainerHeader h;
     size_t payload = (size_t)pcount * 4;
     mtp_container_header_init(&h, MTP_CONTAINER_TYPE_COMMAND, op, tx, (uint32_t)payload);
@@ -155,7 +151,8 @@ TEST(e2e_get_object_handles_lists_files) {
     ASSERT(mtp_dispatcher_handle_packet(h.dispatcher, pkt, n));
 
     MTPContainerHeader data_hdr;
-    ASSERT(find_container(&h.cap, MTP_CONTAINER_TYPE_DATA, MTP_OP_GET_OBJECT_HANDLES, 20, &data_hdr));
+    ASSERT(
+        find_container(&h.cap, MTP_CONTAINER_TYPE_DATA, MTP_OP_GET_OBJECT_HANDLES, 20, &data_hdr));
     ASSERT(find_container(&h.cap, MTP_CONTAINER_TYPE_RESPONSE, MTP_RESP_OK, 20, NULL));
 
     harness_teardown(&h);

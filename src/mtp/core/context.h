@@ -77,23 +77,21 @@ bool mtp_context_is_session_open(const MTPContext* ctx);
 #define MTP_CONTEXT_SET_ERROR(ctx, error_code, fmt, ...) \
     MTP_SET_ERROR(&(ctx)->last_error, error_code, fmt, ##__VA_ARGS__)
 
-#define MTP_CONTEXT_CLEAR_ERROR(ctx) \
-    MTP_CLEAR_ERROR(&(ctx)->last_error)
+#define MTP_CONTEXT_CLEAR_ERROR(ctx) MTP_CLEAR_ERROR(&(ctx)->last_error)
 
-#define MTP_CONTEXT_HAS_ERROR(ctx) \
-    MTP_HAS_ERROR(&(ctx)->last_error)
+#define MTP_CONTEXT_HAS_ERROR(ctx) MTP_HAS_ERROR(&(ctx)->last_error)
 
 // Validation helpers
-#define MTP_REQUIRE_SESSION(ctx, response) \
-    if(!(ctx)->session.is_open) { \
+#define MTP_REQUIRE_SESSION(ctx, response)                                          \
+    if(!(ctx)->session.is_open) {                                                   \
         MTP_CONTEXT_SET_ERROR(ctx, MTP_ERROR_SESSION_NOT_OPEN, "Session not open"); \
-        mtp_response_set_code(response, MTP_RESP_SESSION_NOT_OPEN); \
-        return; \
+        mtp_response_set_code(response, MTP_RESP_SESSION_NOT_OPEN);                 \
+        return;                                                                     \
     }
 
-#define MTP_REQUIRE_VALID_HANDLE(ctx, handle, response) \
-    if(!mtp_object_index_contains((ctx)->object_index, handle)) { \
+#define MTP_REQUIRE_VALID_HANDLE(ctx, handle, response)                                     \
+    if(!mtp_object_index_contains((ctx)->object_index, handle)) {                           \
         MTP_CONTEXT_SET_ERROR(ctx, MTP_ERROR_INVALID_HANDLE, "Invalid handle: %u", handle); \
-        mtp_response_set_code(response, MTP_RESP_INVALID_OBJECT_HANDLE); \
-        return; \
+        mtp_response_set_code(response, MTP_RESP_INVALID_OBJECT_HANDLE);                    \
+        return;                                                                             \
     }

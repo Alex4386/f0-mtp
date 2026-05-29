@@ -49,7 +49,8 @@ size_t mtp_build_object_prop_value(
 
     case MTP_PROP_OBJECT_FORMAT:
         if(!put_u32(&ptr, end, prop_code)) return 0;
-        if(!put_u32(&ptr, end, 0x0006)) return 0; // data type: UINT32 (kept for parity with src.old wire output)
+        if(!put_u32(&ptr, end, 0x0006))
+            return 0; // data type: UINT32 (kept for parity with src.old wire output)
         if(!put_u8(&ptr, end, 0x00)) return 0;
         if(!put_u16(&ptr, end, MTP_FORMAT_UNDEFINED)) return 0;
         if(!put_u8(&ptr, end, 0x00)) return 0;

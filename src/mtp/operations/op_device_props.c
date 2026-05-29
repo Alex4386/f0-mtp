@@ -22,8 +22,8 @@ static size_t write_value_bytes(MTPContext* ctx, uint32_t prop_code, uint8_t* bu
     switch(prop_code) {
     case MTP_DEVICE_PROP_DEVICE_FRIENDLY_NAME: {
         const char* name = (p && p->get_device_name) ? p->get_device_name() : NULL;
-        if(!name) name = ctx->device_info.device_name ? ctx->device_info.device_name :
-                                                        "Flipper Zero";
+        if(!name)
+            name = ctx->device_info.device_name ? ctx->device_info.device_name : "Flipper Zero";
         if(cap < 1 + (strlen(name) + 1) * 2) return 0;
         return mtp_string_write(buf, name);
     }

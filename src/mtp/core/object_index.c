@@ -3,13 +3,13 @@
 #include <string.h>
 
 #define INITIAL_CAPACITY 64
-#define LOAD_FACTOR 0.75
+#define LOAD_FACTOR      0.75
 
 // Hash table entry
 typedef struct IndexEntry {
     uint32_t handle;
     char* path;
-    struct IndexEntry* next;  // Collision chain
+    struct IndexEntry* next; // Collision chain
 } IndexEntry;
 
 // Object index structure
@@ -35,7 +35,7 @@ static void resize_if_needed(MTPObjectIndex* index) {
     size_t new_capacity = index->capacity * 2;
     IndexEntry** new_buckets = calloc(new_capacity, sizeof(IndexEntry*));
     if(!new_buckets) {
-        return;  // Allocation failed, continue with current capacity
+        return; // Allocation failed, continue with current capacity
     }
 
     // Rehash all entries
@@ -65,7 +65,7 @@ MTPObjectIndex* mtp_object_index_create(void) {
 
     index->capacity = INITIAL_CAPACITY;
     index->count = 0;
-    index->next_handle = 1;  // Start handles at 1
+    index->next_handle = 1; // Start handles at 1
 
     index->buckets = calloc(index->capacity, sizeof(IndexEntry*));
     if(!index->buckets) {
@@ -106,7 +106,7 @@ uint32_t mtp_object_index_add(MTPObjectIndex* index, const char* path) {
         IndexEntry* entry = index->buckets[i];
         while(entry) {
             if(strcmp(entry->path, path) == 0) {
-                return entry->handle;  // Return existing handle
+                return entry->handle; // Return existing handle
             }
             entry = entry->next;
         }
@@ -245,8 +245,7 @@ size_t mtp_object_index_count(MTPObjectIndex* index) {
 void mtp_object_index_foreach(
     MTPObjectIndex* index,
     MTPObjectIndexIterator callback,
-    void* user_data
-) {
+    void* user_data) {
     if(!index || !callback) {
         return;
     }

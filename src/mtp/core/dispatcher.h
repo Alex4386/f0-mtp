@@ -19,10 +19,8 @@
 
 typedef struct MTPDispatcher MTPDispatcher;
 
-MTPDispatcher* mtp_dispatcher_create(
-    MTPContext* ctx,
-    MTPOperationRegistry* registry,
-    MTPTransport* transport);
+MTPDispatcher*
+    mtp_dispatcher_create(MTPContext* ctx, MTPOperationRegistry* registry, MTPTransport* transport);
 
 void mtp_dispatcher_destroy(MTPDispatcher* d);
 

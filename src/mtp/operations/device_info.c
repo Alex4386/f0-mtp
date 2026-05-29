@@ -22,11 +22,7 @@ static bool write_u32(uint8_t** ptr, uint8_t* end, uint32_t value) {
     return true;
 }
 
-static bool write_u16_array(
-    uint8_t** ptr,
-    uint8_t* end,
-    const uint16_t* values,
-    size_t count) {
+static bool write_u16_array(uint8_t** ptr, uint8_t* end, const uint16_t* values, size_t count) {
     if(!write_u32(ptr, end, (uint32_t)count)) return false;
     for(size_t i = 0; i < count; i++) {
         if(!write_u16(ptr, end, values[i])) return false;
@@ -47,10 +43,7 @@ static bool write_mtp_string(uint8_t** ptr, uint8_t* end, const char* str) {
 
 // --------------------------------------------------------------------------
 
-size_t mtp_build_device_info(
-    const MTPDeviceInfoInput* in,
-    uint8_t* buffer,
-    size_t buffer_size) {
+size_t mtp_build_device_info(const MTPDeviceInfoInput* in, uint8_t* buffer, size_t buffer_size) {
     if(!in || !buffer || buffer_size == 0) return 0;
 
     uint8_t* ptr = buffer;
@@ -79,8 +72,7 @@ size_t mtp_build_device_info(
     if(!write_u16_array(&ptr, end, in->supported_events, in->supported_events_count)) return 0;
 
     // Device properties supported
-    if(!write_u16_array(
-           &ptr, end, in->supported_device_props, in->supported_device_props_count))
+    if(!write_u16_array(&ptr, end, in->supported_device_props, in->supported_device_props_count))
         return 0;
 
     // Capture formats supported

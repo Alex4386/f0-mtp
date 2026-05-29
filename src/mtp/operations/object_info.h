@@ -21,7 +21,4 @@ typedef struct {
 
 // Serialize an ObjectInfo dataset into `buffer`. Returns bytes written, or 0
 // on overflow / bad input.
-size_t mtp_build_object_info(
-    const MTPObjectInfoInput* in,
-    uint8_t* buffer,
-    size_t buffer_size);
+size_t mtp_build_object_info(const MTPObjectInfoInput* in, uint8_t* buffer, size_t buffer_size);

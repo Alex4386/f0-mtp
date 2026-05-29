@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_ENTRIES 64
-#define MAX_PATH 256
+#define MAX_ENTRIES   64
+#define MAX_PATH      256
 #define MAX_FILE_SIZE (256 * 1024)
 
 typedef struct {
@@ -207,7 +207,8 @@ uint16_t storage_file_write(File* file, const void* buffer, uint16_t size) {
 
     if(needed > e->capacity) {
         size_t new_cap = e->capacity == 0 ? 64 : e->capacity * 2;
-        while(new_cap < needed) new_cap *= 2;
+        while(new_cap < needed)
+            new_cap *= 2;
         uint8_t* new_buf = realloc(e->contents, new_cap);
         if(!new_buf) return 0;
         e->contents = new_buf;

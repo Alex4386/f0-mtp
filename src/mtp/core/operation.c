@@ -70,8 +70,7 @@ void mtp_response_set_stream(
     MTPResponse* response,
     void* context,
     int (*callback)(void* ctx, uint8_t* buffer, size_t size),
-    size_t total_size
-) {
+    size_t total_size) {
     if(!response || !callback) {
         return;
     }

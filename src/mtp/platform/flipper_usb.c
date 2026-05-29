@@ -177,7 +177,8 @@ static bool transport_send(MTPTransport* transport, const uint8_t* buffer, size_
     return written == (int32_t)size;
 }
 
-static bool transport_receive(MTPTransport* transport, uint8_t* buffer, size_t size, size_t* received) {
+static bool
+    transport_receive(MTPTransport* transport, uint8_t* buffer, size_t size, size_t* received) {
     // We drive receives through the worker thread + dispatcher_handle_packet,
     // so this synchronous receive API isn't used directly. Return false to
     // make any accidental caller fail loudly.

@@ -39,10 +39,7 @@ static bool put_mtp_string(uint8_t** ptr, uint8_t* end, const char* str) {
     return true;
 }
 
-size_t mtp_build_storage_info(
-    const MTPStorageInfoInput* in,
-    uint8_t* buffer,
-    size_t buffer_size) {
+size_t mtp_build_storage_info(const MTPStorageInfoInput* in, uint8_t* buffer, size_t buffer_size) {
     if(!in || !buffer || buffer_size == 0) return 0;
 
     uint8_t* ptr = buffer;

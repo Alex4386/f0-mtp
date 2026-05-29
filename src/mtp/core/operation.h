@@ -18,7 +18,7 @@ typedef struct {
 
 // MTP Response structure
 typedef struct {
-    uint16_t response_code;  // MTP_RESP_OK, etc.
+    uint16_t response_code; // MTP_RESP_OK, etc.
     uint32_t params[5];
     uint8_t param_count;
 
@@ -34,11 +34,8 @@ typedef struct {
 } MTPResponse;
 
 // Operation handler function signature
-typedef void (*MTPOperationHandler)(
-    MTPContext* ctx,
-    const MTPRequest* request,
-    MTPResponse* response
-);
+typedef void (
+    *MTPOperationHandler)(MTPContext* ctx, const MTPRequest* request, MTPResponse* response);
 
 // Operation registry entry
 typedef struct {
@@ -59,17 +56,13 @@ void mtp_response_set_stream(
     MTPResponse* response,
     void* context,
     int (*callback)(void* ctx, uint8_t* buffer, size_t size),
-    size_t total_size
-);
+    size_t total_size);
 
 // Helper macro for cleaner operation handler definitions
 #define MTP_OPERATION_HANDLER(name) \
     void mtp_op_##name(MTPContext* ctx, const MTPRequest* request, MTPResponse* response)
 
 // Helper macro for operation entry definition
-#define MTP_OPERATION_ENTRY(op_code, name) \
+#define MTP_OPERATION_ENTRY(op_code, name)          \
     const MTPOperationEntry mtp_op_entry_##name = { \
-        .op_code = op_code, \
-        .name = #name, \
-        .handler = mtp_op_##name \
-    }
+        .op_code = op_code, .name = #name, .handler = mtp_op_##name}

@@ -37,8 +37,7 @@ MTP_OPERATION_HANDLER(send_object) {
         mtp_response_set_code(response, MTP_RESP_NO_VALID_OBJECT_INFO);
         return;
     }
-    if(!mtp_transfer_state_begin_send_object(
-           ctx->transfer_manager, ctx, request->transaction_id)) {
+    if(!mtp_transfer_state_begin_send_object(ctx->transfer_manager, ctx, request->transaction_id)) {
         mtp_response_set_code(response, MTP_RESP_NO_VALID_OBJECT_INFO);
         return;
     }

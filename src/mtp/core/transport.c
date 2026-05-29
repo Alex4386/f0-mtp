@@ -39,8 +39,7 @@ void mtp_transport_set_callbacks(
     MTPTransport* transport,
     MTPTransportReceiveCallback receive,
     MTPTransportSendCallback send,
-    MTPTransportFlushCallback flush
-) {
+    MTPTransportFlushCallback flush) {
     if(!transport) {
         return;
     }
@@ -72,8 +71,7 @@ bool mtp_transport_receive_container(
     MTPContainerHeader* header,
     uint8_t* payload,
     size_t max_payload_size,
-    size_t* payload_received
-) {
+    size_t* payload_received) {
     if(!transport || !transport->receive || !header) {
         return false;
     }
@@ -102,7 +100,7 @@ bool mtp_transport_receive_container(
     size_t expected_payload = header->length - sizeof(MTPContainerHeader);
 
     if(expected_payload > max_payload_size) {
-        return false;  // Payload too large
+        return false; // Payload too large
     }
 
     // Read payload if present
@@ -134,8 +132,7 @@ bool mtp_transport_send_container(
     MTPTransport* transport,
     const MTPContainerHeader* header,
     const uint8_t* payload,
-    size_t payload_size
-) {
+    size_t payload_size) {
     if(!transport || !transport->send || !header) {
         return false;
     }
@@ -180,21 +177,15 @@ bool mtp_container_header_parse(MTPContainerHeader* header, const uint8_t* buffe
         return false;
     }
 
-    header->length = (uint32_t)buffer[0] |
-                    ((uint32_t)buffer[1] << 8) |
-                    ((uint32_t)buffer[2] << 16) |
-                    ((uint32_t)buffer[3] << 24);
+    header->length = (uint32_t)buffer[0] | ((uint32_t)buffer[1] << 8) |
+                     ((uint32_t)buffer[2] << 16) | ((uint32_t)buffer[3] << 24);
 
-    header->type = (uint16_t)buffer[4] |
-                  ((uint16_t)buffer[5] << 8);
+    header->type = (uint16_t)buffer[4] | ((uint16_t)buffer[5] << 8);
 
-    header->code = (uint16_t)buffer[6] |
-                  ((uint16_t)buffer[7] << 8);
+    header->code = (uint16_t)buffer[6] | ((uint16_t)buffer[7] << 8);
 
-    header->transaction_id = (uint32_t)buffer[8] |
-                            ((uint32_t)buffer[9] << 8) |
-                            ((uint32_t)buffer[10] << 16) |
-                            ((uint32_t)buffer[11] << 24);
+    header->transaction_id = (uint32_t)buffer[8] | ((uint32_t)buffer[9] << 8) |
+                             ((uint32_t)buffer[10] << 16) | ((uint32_t)buffer[11] << 24);
 
     return true;
 }

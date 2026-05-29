@@ -32,8 +32,8 @@ TEST(prop_object_format_basic) {
 
 TEST(prop_file_name_basic) {
     uint8_t buf[128];
-    size_t n = mtp_build_object_prop_value(
-        MTP_PROP_OBJECT_FILE_NAME, 0, "hello.txt", buf, sizeof(buf));
+    size_t n =
+        mtp_build_object_prop_value(MTP_PROP_OBJECT_FILE_NAME, 0, "hello.txt", buf, sizeof(buf));
     ASSERT(n > 12);
     // First 4 bytes = prop_code
     uint32_t prop = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) |
