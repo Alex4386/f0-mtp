@@ -29,6 +29,7 @@ typedef struct {
     MTPTransport* transport;
     MTPDispatcher* dispatcher;
     FlipperMTPUsb* usb;
+    bool usb_attached;
 
     char* serial;
     const Version* fw_version;
@@ -48,7 +49,17 @@ static void on_draw(Canvas* canvas, void* ctx) {
     canvas_clear(canvas);
     canvas_set_bitmap_mode(canvas, true);
 
-    if(connected) {
+    if(!app->usb_attached) {
+        canvas_draw_icon(canvas, 1, 31, &I_Connect_me);
+        canvas_set_font(canvas, FontPrimary);
+        canvas_draw_str(canvas, 43, 10, "MTP Connection");
+        canvas_draw_str(canvas, 10, 25, "USB mode busy");
+        canvas_draw_icon(canvas, 2, 2, &I_Pin_back_arrow);
+        canvas_set_font(canvas, FontSecondary);
+        canvas_draw_str(canvas, 15, 10, "Exit");
+        canvas_draw_str(canvas, 42, 41, "Retrying USB");
+        canvas_draw_str(canvas, 42, 50, "Reconnect USB");
+    } else if(connected) {
         canvas_draw_icon(canvas, 0, 14, &I_DFU);
         canvas_set_font(canvas, FontPrimary);
         canvas_draw_str(canvas, 43, 10, "MTP Connection");
@@ -107,11 +118,25 @@ static MTPApp* app_alloc(void) {
     return app;
 }
 
+static bool app_attach_usb(MTPApp* app) {
+    if(!app || !app->usb || app->usb_attached) {
+        return app && app->usb_attached;
+    }
+
+    app->usb_attached = flipper_usb_attach(app->usb);
+    if(!app->usb_attached) {
+        FURI_LOG_W("MTP", "Failed to switch USB into MTP mode, will retry");
+    }
+    return app->usb_attached;
+}
+
 static void app_free(MTPApp* app) {
     if(!app) return;
 
     if(app->usb) {
-        flipper_usb_detach(app->usb);
+        if(app->usb_attached) {
+            flipper_usb_detach(app->usb);
+        }
         flipper_usb_destroy(app->usb);
     }
     if(app->dispatcher) mtp_dispatcher_destroy(app->dispatcher);
@@ -137,19 +162,20 @@ int32_t entrypoint(void* p) {
     MTPApp* app = app_alloc();
     if(!app) return -1;
 
-    if(!flipper_usb_attach(app->usb)) {
-        FURI_LOG_E("MTP", "Failed to switch USB into MTP mode");
-        app_free(app);
-        return -1;
-    }
+    app_attach_usb(app);
 
     InputEvent event;
     bool running = true;
+    uint8_t retry_ticks = 0;
     while(running) {
         if(furi_message_queue_get(app->input_queue, &event, 100) == FuriStatusOk) {
             if(event.key == InputKeyBack) running = false;
             view_port_update(app->view_port);
         } else {
+            if(!app->usb_attached && ++retry_ticks >= 10) {
+                retry_ticks = 0;
+                app_attach_usb(app);
+            }
             view_port_update(app->view_port);
         }
     }
