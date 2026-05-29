@@ -73,8 +73,9 @@ char* mtp_string_decode(const uint8_t* buffer, size_t buffer_size) {
     }
 
     // Decode UTF-16LE to ASCII/UTF-8
+    size_t char_count = (size_t)length - 1;
     const uint16_t* utf16_data = (const uint16_t*)(buffer + 1);
-    for(size_t i = 0; i < length - 1; i++) {
+    for(size_t i = 0; i < char_count; i++) {
         uint16_t ch = utf16_data[i];
 
         // Simple conversion (assumes ASCII or low Unicode)
@@ -86,7 +87,7 @@ char* mtp_string_decode(const uint8_t* buffer, size_t buffer_size) {
             result[i] = (char)ch;
         }
     }
-    result[length - 1] = '\0';
+    result[char_count] = '\0';
 
     return result;
 }
@@ -102,7 +103,7 @@ bool mtp_string_has_unicode(const uint8_t* buffer) {
     }
 
     const uint16_t* utf16_data = (const uint16_t*)(buffer + 1);
-    for(size_t i = 0; i < length; i++) {
+    for(size_t i = 0; i < (size_t)length; i++) {
         if(utf16_data[i] > 0x7F) {
             return true;
         }

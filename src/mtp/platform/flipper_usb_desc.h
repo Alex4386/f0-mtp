@@ -2,6 +2,9 @@
 
 #ifdef FLIPPER_ZERO
 
+#include <stdbool.h>
+#include <stdint.h>
+
 #include <furi_hal_usb.h>
 #include "usb.h"
 #include "usb_std.h"
@@ -20,6 +23,16 @@
 #define MTP_USB_PACKET_BYTES   64
 #define USB_MAX_INTERRUPT_SIZE 28
 #define MTP_BCD_VERSION        VERSION_BCD(1, 0, 0)
+
+// Mirrors the private furi_hal_usb_i.h values used by USB descriptors.
+#define USB_EP0_SIZE 8
+
+enum UsbDevDescStr {
+    UsbDevLang = 0,
+    UsbDevManuf = 1,
+    UsbDevProduct = 2,
+    UsbDevSerial = 3,
+};
 
 struct MtpDescriptor {
     struct usb_config_descriptor config;

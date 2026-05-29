@@ -3,7 +3,8 @@
 #include <string.h>
 
 #define INITIAL_CAPACITY 64
-#define LOAD_FACTOR      0.75
+#define LOAD_FACTOR_NUM  3
+#define LOAD_FACTOR_DEN  4
 
 // Hash table entry
 typedef struct IndexEntry {
@@ -27,7 +28,7 @@ static uint32_t hash_handle(uint32_t handle, size_t capacity) {
 
 // Resize and rehash
 static void resize_if_needed(MTPObjectIndex* index) {
-    if((double)index->count / index->capacity <= LOAD_FACTOR) {
+    if(index->count * LOAD_FACTOR_DEN <= index->capacity * LOAD_FACTOR_NUM) {
         return;
     }
 
