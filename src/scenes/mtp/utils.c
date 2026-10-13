@@ -7,7 +7,9 @@ char byte_to_hex(uint8_t byte) {
 }
 
 void print_bytes(char* tag, uint8_t* bytes, size_t len) {
-    FURI_LOG_I("MTP", "Dumping bytes - TAG: %s", tag);
+    if(furi_log_get_level() < FuriLogLevelDebug) return;
+
+    FURI_LOG_D("MTP", "Dumping bytes - TAG: %s", tag);
     int lines = len > 0 ? (len / 16) + 1 : 0;
     size_t last_line_len = len % 16;
     char* line = (char*)malloc(16 * 3 + 3 + 16 + 1);
@@ -35,60 +37,39 @@ void print_bytes(char* tag, uint8_t* bytes, size_t len) {
                 bytes[i * 16 + j] >= 32 && bytes[i * 16 + j] <= 126 ? bytes[i * 16 + j] : '.';
         }
         line[16 * 3 + 3 + line_len] = '\0';
-        FURI_LOG_I("MTP", line);
+        FURI_LOG_D("MTP", "%s", line);
     }
     free(line);
-    FURI_LOG_I("MTP", "End of dump - TAG: %s", tag);
+    FURI_LOG_D("MTP", "End of dump - TAG: %s", tag);
 }
 
-void merge_path(char* target, char* base, char* name) {
-    char* ptr = target;
-    strcpy(target, base);
-    ptr += strlen(base);
-    strcpy(ptr, "/");
-    ptr++;
-    strcpy(ptr, name);
+bool merge_path(char* target, size_t size, const char* base, const char* name) {
+    int length = snprintf(target, size, "%s/%s", base, name);
+    return length >= 0 && (size_t)length < size;
 }
 
-bool CheckMTPStringHasUnicode(uint8_t* buffer) {
-    uint8_t* base = buffer;
-    int len = *base;
+char* ReadMTPString(const uint8_t* buffer) {
+    // length byte counts UTF-16 code units, including the terminator
+    uint8_t len16 = buffer[0];
+    const uint8_t* ptr = buffer + 1;
 
-    uint16_t* ptr = (uint16_t*)(base + 1);
+    char* str = malloc(sizeof(char) * (len16 + 1));
+    int i = 0;
+    for(; i < len16; i++) {
+        uint16_t c = ptr[i * 2] | (ptr[i * 2 + 1] << 8);
+        if(c == 0) break;
 
-    for(int i = 0; i < len; i++) {
-        if(ptr[i] > 0x7F) {
-            return true;
-        }
+        // Flipper's filesystem can't take non-ASCII names
+        str[i] = c < 0x80 ? (char)c : '_';
     }
-
-    return false;
-}
-
-char* ReadMTPString(uint8_t* buffer) {
-    int len16 = *(uint8_t*)buffer;
-    if(len16 == 0) {
-        return "";
-    }
-
-    char* str = malloc(sizeof(char) * len16);
-
-    uint8_t* base = buffer + 1;
-    uint16_t* ptr = (uint16_t*)base;
-
-    for(int i = 0; i < len16; i++) {
-        str[i] = *ptr++;
-    }
+    str[i] = '\0';
 
     return str;
 }
 
 void WriteMTPString(uint8_t* buffer, const char* str, uint16_t* length) {
     uint8_t* ptr = buffer;
-    uint8_t str_len = strlen(str);
-
-    FURI_LOG_I("MTP", "Writing MTP string: %s", str);
-    FURI_LOG_I("MTP", "String length: %d", str_len);
+    size_t str_len = strlen(str);
 
     // extra handling for empty string
     if(str_len == 0) {
@@ -99,15 +80,17 @@ void WriteMTPString(uint8_t* buffer, const char* str, uint16_t* length) {
         return;
     }
 
+    // the length byte can describe at most 255 units, terminator included
+    if(str_len > 254) str_len = 254;
+
     *ptr = str_len + 1; // Length byte (number of characters including the null terminator)
     ptr++;
-    while(*str) {
-        *ptr++ = *str++;
+    for(size_t i = 0; i < str_len; i++) {
+        *ptr++ = str[i];
         *ptr++ = 0x00; // UTF-16LE encoding (add null byte for each character)
     }
     *ptr++ = 0x00; // Null terminator (UTF-16LE)
     *ptr++ = 0x00;
 
-    FURI_LOG_I("MTP", "String byte length: %d", ptr - buffer);
     *length = ptr - buffer;
 }

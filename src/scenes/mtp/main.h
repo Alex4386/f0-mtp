@@ -21,6 +21,7 @@ typedef struct {
 
 typedef struct FileHandle {
     uint32_t handle;
+    uint32_t hash; // hash of path, checked before strcmp
     char* path;
     struct FileHandle* next;
 } FileHandle;
@@ -44,6 +45,7 @@ typedef struct AppMTP {
     bool write_pending;
 
     FileHandle* handles;
+    uint32_t last_handle; // last issued object handle (0 is never issued)
 } AppMTP;
 
 AppMTP* MTP_alloc();

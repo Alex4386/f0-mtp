@@ -7,21 +7,35 @@
 #include "mtp_support.h"
 #include "device_props.h"
 #include "storage_ops.h"
+#include "usb.h"
 #include "usb_desc.h"
 #include "utils.h"
 
 // temporary storage for buffer
 MTPDataPersistence persistence;
 
-void mtp_handle_bulk(AppMTP* mtp, uint8_t* buffer, uint32_t length) {
+void mtp_reset_transfer(AppMTP* mtp) {
     UNUSED(mtp);
+
+    if(persistence.current_file != NULL) {
+        storage_file_close(persistence.current_file);
+        storage_file_free(persistence.current_file);
+    }
+
+    if(persistence.global_buffer != NULL) {
+        free(persistence.global_buffer);
+    }
+
+    memset(&persistence, 0, sizeof(persistence));
+}
+
+void mtp_handle_bulk(AppMTP* mtp, uint8_t* buffer, uint32_t length) {
     if(persistence.left_bytes > 0) {
-        FURI_LOG_I("MTP", "Left bytes: %ld", persistence.left_bytes);
-        handle_mtp_data_packet(mtp, buffer, length, 1);
+        handle_mtp_data_packet(mtp, buffer, length, true);
         return;
     }
 
-    if(length < 12) {
+    if(length < sizeof(struct MTPHeader)) {
         FURI_LOG_E("MTP", "Invalid MTP packet");
         return;
     }
@@ -31,12 +45,16 @@ void mtp_handle_bulk(AppMTP* mtp, uint8_t* buffer, uint32_t length) {
 
     if(type == MTP_TYPE_COMMAND) {
         struct MTPContainer* container = (struct MTPContainer*)buffer;
+
+        // params that were not sent must not leak in from the previous packet
+        uint32_t param_count = (MIN(length, header->len) - sizeof(struct MTPHeader)) / 4;
+        for(uint32_t i = param_count; i < 5; i++) {
+            container->params[i] = 0;
+        }
+
         handle_mtp_command(mtp, container);
     } else if(type == MTP_TYPE_DATA) {
-        if(header->len > length) {
-            persistence.left_bytes = header->len;
-        }
-        handle_mtp_data_packet(mtp, buffer, length, 0);
+        handle_mtp_data_packet(mtp, buffer, length, false);
     } else if(type == MTP_TYPE_RESPONSE) {
         handle_mtp_response(mtp, header);
     } else {
@@ -49,268 +67,316 @@ void setup_persistence(struct MTPContainer* container) {
     memcpy(persistence.params, container->params, sizeof(uint32_t) * 5);
 }
 
+static bool flush_object_buffer(void) {
+    if(persistence.buffer_offset == 0) return true;
+
+    size_t written = storage_file_write(
+        persistence.current_file, persistence.global_buffer, persistence.buffer_offset);
+    bool ok = written == persistence.buffer_offset;
+    persistence.buffer_offset = 0;
+    return ok;
+}
+
+static void close_object_file(void) {
+    if(persistence.current_file == NULL) return;
+
+    storage_file_close(persistence.current_file);
+    storage_file_free(persistence.current_file);
+    persistence.current_file = NULL;
+}
+
+static void begin_send_object(AppMTP* mtp) {
+    char* path = get_path_from_handle(mtp, persistence.prev_handle);
+    if(persistence.prev_handle == 0 || path == NULL) {
+        FURI_LOG_E("MTP", "SendObject without valid SendObjectInfo");
+        persistence.resp_code = MTP_RESP_NO_VALID_OBJECT_INFO;
+        return;
+    }
+
+    FURI_LOG_I("MTP", "Writing to file: %s", path);
+
+    File* file = storage_file_alloc(mtp->storage);
+    if(!storage_file_open(file, path, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
+        FURI_LOG_E("MTP", "Failed to open file: %s", path);
+        storage_file_free(file);
+        persistence.resp_code = MTP_RESP_ACCESS_DENIED;
+        return;
+    }
+
+    persistence.current_file = file;
+    persistence.global_buffer = malloc(MTP_FILE_BUFFER_SIZE);
+}
+
+static void write_send_object(uint8_t* data, uint32_t size) {
+    while(persistence.current_file != NULL && size > 0) {
+        uint32_t chunk = MIN(size, MTP_FILE_BUFFER_SIZE - persistence.buffer_offset);
+        memcpy(persistence.global_buffer + persistence.buffer_offset, data, chunk);
+        persistence.buffer_offset += chunk;
+        data += chunk;
+        size -= chunk;
+
+        if(persistence.buffer_offset == MTP_FILE_BUFFER_SIZE && !flush_object_buffer()) {
+            FURI_LOG_E("MTP", "Write failed");
+            persistence.resp_code = MTP_RESP_STORE_FULL;
+            close_object_file();
+        }
+    }
+}
+
+static void end_send_object(AppMTP* mtp) {
+    if(persistence.current_file != NULL) {
+        if(!flush_object_buffer()) {
+            FURI_LOG_E("MTP", "Write failed");
+            persistence.resp_code = MTP_RESP_STORE_FULL;
+        }
+        close_object_file();
+    }
+
+    free(persistence.global_buffer);
+    persistence.global_buffer = NULL;
+
+    // an ObjectInfo is good for one object only
+    persistence.prev_handle = 0;
+
+    FURI_LOG_I("MTP", "File transfer completed: 0x%04x", persistence.resp_code);
+    send_mtp_response(
+        mtp, MTP_TYPE_RESPONSE, persistence.resp_code, persistence.transaction_id, NULL);
+}
+
 void handle_mtp_data_packet(AppMTP* mtp, uint8_t* buffer, int32_t length, bool cont) {
-    UNUSED(mtp);
     uint8_t* ptr = buffer;
+    uint32_t size = length;
+
     if(!cont) {
         struct MTPHeader* header = (struct MTPHeader*)buffer;
 
         if(header->transaction_id != persistence.transaction_id) {
             // the params value can not be trusted.
             // reset the params
-            for(int i = 0; i < 5; i++) {
-                persistence.params[i] = 0;
-            }
+            memset(persistence.params, 0, sizeof(persistence.params));
         }
 
-        persistence.global_buffer = NULL;
-        uint32_t transaction_id = header->transaction_id;
         persistence.op = header->op;
+        persistence.left_bytes =
+            header->len > sizeof(struct MTPHeader) ? header->len - sizeof(struct MTPHeader) : 0;
+        persistence.buffer_offset = 0;
+        persistence.resp_code = MTP_RESP_OK;
 
-        FURI_LOG_I("MTP", "Handling MTP data: 0x%04x", header->op);
-        FURI_LOG_I("MTP", "Transaction ID: %ld", transaction_id);
-        FURI_LOG_I("MTP", "Length: %ld", length);
+        FURI_LOG_I(
+            "MTP",
+            "Handling MTP data: 0x%04x, transaction %ld, %ld bytes",
+            header->op,
+            header->transaction_id,
+            persistence.left_bytes);
 
-        ptr = (uint8_t*)buffer + sizeof(struct MTPHeader);
+        ptr += sizeof(struct MTPHeader);
+        size -= sizeof(struct MTPHeader);
 
-        switch(header->op) {
+        switch(persistence.op) {
         case MTP_OP_SEND_OBJECT_INFO:
-        case MTP_OP_SET_OBJECT_PROP_VALUE: {
+        case MTP_OP_SET_OBJECT_PROP_VALUE:
             persistence.global_buffer = malloc(sizeof(uint8_t) * MTP_BUFFER_SIZE);
-            persistence.buffer_offset = 0;
+            break;
+        case MTP_OP_SEND_OBJECT:
+            begin_send_object(mtp);
+            break;
+        default:
             break;
         }
-        case MTP_OP_SEND_OBJECT: {
-            persistence.buffer_offset = 0;
-            persistence.left_bytes = header->len - sizeof(struct MTPHeader);
-        }
-        }
     }
 
-    // for speicific operations.
-    if(persistence.op == MTP_OP_SEND_OBJECT) {
-        uint32_t handle = persistence.prev_handle;
-        if(handle == 0) {
-            FURI_LOG_E("MTP", "Invalid handle for MTP_OP_SEND_OBJECT");
-            send_mtp_response(
-                mtp, 3, MTP_RESP_INVALID_OBJECT_HANDLE, persistence.transaction_id, NULL);
-            return;
+    if(size > persistence.left_bytes) {
+        size = persistence.left_bytes;
+    }
+    persistence.left_bytes -= size;
+
+    switch(persistence.op) {
+    case MTP_OP_SEND_OBJECT:
+        write_send_object(ptr, size);
+        if(persistence.left_bytes == 0) {
+            end_send_object(mtp);
         }
-
-        char* path = get_path_from_handle(mtp, handle);
-        int bytes_length = length - (ptr - buffer);
-        int offset = persistence.buffer_offset;
-
-        FURI_LOG_I("MTP", "Writing to file: %s with offset %02x", path, offset);
-        if(persistence.current_file == NULL) {
-            persistence.current_file = storage_file_alloc(mtp->storage);
-            if(!storage_file_open(persistence.current_file, path, FSAM_WRITE, FSOM_OPEN_EXISTING)) {
-                FURI_LOG_E("MTP", "Failed to open file: %s", path);
-                send_mtp_response(
-                    mtp, 3, MTP_RESP_INVALID_OBJECT_HANDLE, persistence.transaction_id, NULL);
-                storage_file_free(persistence.current_file);
-                persistence.current_file = NULL;
-                return;
-            }
-        }
-
-        File* file = persistence.current_file;
-
-        // Write with error handling
-        uint16_t bytes_written = storage_file_write(file, ptr, bytes_length);
-        if(bytes_written != bytes_length) {
-            FURI_LOG_E("MTP", "Write failed: %d/%d bytes written", bytes_written, bytes_length);
-            send_mtp_response(mtp, 3, MTP_RESP_STORE_FULL, persistence.transaction_id, NULL);
-            storage_file_close(file);
-            storage_file_free(file);
-            persistence.current_file = NULL;
-            return;
-        }
-
-        persistence.buffer_offset += bytes_written;
-        persistence.left_bytes -= bytes_written;
-
-        // Sync periodically based on configured interval
-        if(persistence.buffer_offset % MTP_FILE_SYNC_INTERVAL == 0) {
-            storage_file_sync(file);
-            FURI_LOG_I("MTP", "Progress: %ld bytes remaining", persistence.left_bytes);
-        }
-
-        if(persistence.left_bytes <= 0) {
-            storage_file_sync(file);
-            send_mtp_response(mtp, 3, MTP_RESP_OK, persistence.transaction_id, NULL);
-            storage_file_close(file);
-            storage_file_free(file);
-            persistence.current_file = NULL;
-            FURI_LOG_I("MTP", "File transfer completed successfully");
-        }
-    } else if(persistence.op == MTP_OP_SET_OBJECT_PROP_VALUE) {
-        uint32_t handle = persistence.params[0];
-        uint32_t prop_code = persistence.params[1];
-
-        char* path = get_path_from_handle(mtp, handle);
-        if(path == NULL) {
-            FURI_LOG_E("MTP", "Invalid handle for MTP_OP_SET_OBJECT_PROP_VALUE");
-            send_mtp_response(
-                mtp, 3, MTP_RESP_INVALID_OBJECT_HANDLE, persistence.transaction_id, NULL);
-            return;
-        }
-
-        if(prop_code == MTP_PROP_OBJECT_FILE_NAME) {
-            // dump the ptr
-            print_bytes("MTP FileName", ptr, length - sizeof(struct MTPHeader));
-
-            char* name = ReadMTPString(ptr);
-            char* full_path = malloc(sizeof(char) * MTP_PATH_SIZE);
-
-            merge_path(full_path, get_base_path_from_storage_id(persistence.params[2]), name);
-
-            // if(!storage_file_exists(mtp->storage, full_path)) {
-            //     if(!storage_file_rename(mtp->storage, path, full_path)) {
-            //         FURI_LOG_E("MTP", "Failed to rename file: %s to %s", path, full_path);
-            //         send_mtp_response(
-            //             mtp, 3, MTP_RESP_GENERAL_ERROR, persistence.transaction_id, NULL);
-            //         free(full_path);
-            //         free(name);
-            //         return;
-            //     }
-            // }
-
-            update_object_handle_path(mtp, handle, full_path);
-            send_mtp_response(mtp, 3, MTP_RESP_OK, persistence.transaction_id, NULL);
-            free(full_path);
-            free(name);
+        break;
+    case MTP_OP_SEND_OBJECT_INFO:
+    case MTP_OP_SET_OBJECT_PROP_VALUE:
+        if(persistence.buffer_offset + size <= MTP_BUFFER_SIZE) {
+            memcpy(persistence.global_buffer + persistence.buffer_offset, ptr, size);
+            persistence.buffer_offset += size;
         } else {
-            FURI_LOG_W("MTP", "Unsupported property code: 0x%04lx", prop_code);
-            send_mtp_response(
-                mtp, 3, MTP_RESP_INVALID_OBJECT_PROP_CODE, persistence.transaction_id, NULL);
+            FURI_LOG_E("MTP", "Dataset too large");
+            persistence.resp_code = MTP_RESP_GENERAL_ERROR;
         }
-    }
-
-    if(persistence.global_buffer != NULL) {
-        memcpy(persistence.global_buffer + persistence.buffer_offset, ptr, length);
-        persistence.buffer_offset += length;
-
-        if(persistence.left_bytes > 0) {
-            persistence.left_bytes -= length;
-        }
-
-        FURI_LOG_I("MTP", "Buffer offset: %ld", persistence.buffer_offset);
-        FURI_LOG_I("MTP", "Left bytes: %ld", persistence.left_bytes);
 
         if(persistence.left_bytes == 0) {
             handle_mtp_data_complete(mtp);
         }
+        break;
+    default:
+        // data phase of an unsupported operation: drain it
+        if(persistence.left_bytes == 0) {
+            FURI_LOG_W("MTP", "Dropped data for operation: 0x%04x", persistence.op);
+        }
+        break;
     }
 }
 
+static void handle_send_object_info(AppMTP* mtp) {
+    uint8_t* data = persistence.global_buffer;
+    if(persistence.buffer_offset <= MTP_OBJECT_INFO_FIXED_SIZE) {
+        send_mtp_response(
+            mtp,
+            MTP_TYPE_RESPONSE,
+            MTP_RESP_NO_VALID_OBJECT_INFO,
+            persistence.transaction_id,
+            NULL);
+        return;
+    }
+
+    // format sits before the misaligned part of ObjectInfoHeader, so it is safe to read
+    struct ObjectInfoHeader* info = (struct ObjectInfoHeader*)data;
+    bool is_dir = info->format == MTP_FORMAT_ASSOCIATION;
+
+    char* name = ReadMTPString(data + MTP_OBJECT_INFO_FIXED_SIZE);
+
+    // if the name is blank, generate random name
+    if(*name == 0) {
+        free(name);
+        name = malloc(sizeof(char) * 16);
+        snprintf(name, 16, "file_%d", rand() % 1000);
+    }
+
+    FURI_LOG_I("MTP", "Creating object: %s", name);
+
+    uint32_t storage_id = persistence.params[0];
+    uint32_t parent = persistence.params[1];
+
+    const char* base_path = get_base_path_from_storage_id(storage_id);
+    if(base_path == NULL) {
+        FURI_LOG_E("MTP", "Invalid storage ID: %ld", storage_id);
+        send_mtp_response(
+            mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_STORAGE_ID, persistence.transaction_id, NULL);
+        free(name);
+        return;
+    }
+
+    if(parent != 0xffffffff && parent != 0) {
+        base_path = get_path_from_handle(mtp, parent);
+        if(base_path == NULL) {
+            FURI_LOG_E("MTP", "Invalid parent handle: %ld", parent);
+            send_mtp_response(
+                mtp,
+                MTP_TYPE_RESPONSE,
+                MTP_RESP_INVALID_PARENT_OBJECT,
+                persistence.transaction_id,
+                NULL);
+            free(name);
+            return;
+        }
+    }
+
+    char full_path[MTP_PATH_SIZE];
+    bool path_ok = merge_path(full_path, sizeof(full_path), base_path, name);
+    free(name);
+
+    if(!path_ok) {
+        FURI_LOG_E("MTP", "Path too long");
+        send_mtp_response(
+            mtp, MTP_TYPE_RESPONSE, MTP_RESP_GENERAL_ERROR, persistence.transaction_id, NULL);
+        return;
+    }
+
+    if(is_dir) {
+        if(!storage_dir_exists(mtp->storage, full_path) &&
+           !storage_simply_mkdir(mtp->storage, full_path)) {
+            FURI_LOG_E("MTP", "Failed to create directory: %s", full_path);
+            send_mtp_response(
+                mtp, MTP_TYPE_RESPONSE, MTP_RESP_GENERAL_ERROR, persistence.transaction_id, NULL);
+            return;
+        }
+    } else if(!storage_file_exists(mtp->storage, full_path)) {
+        // create file, SendObject will fill it in
+        File* file = storage_file_alloc(mtp->storage);
+        bool created = storage_file_open(file, full_path, FSAM_WRITE, FSOM_CREATE_ALWAYS);
+        storage_file_close(file);
+        storage_file_free(file);
+
+        if(!created) {
+            FURI_LOG_E("MTP", "Failed to create file: %s", full_path);
+            send_mtp_response(
+                mtp, MTP_TYPE_RESPONSE, MTP_RESP_GENERAL_ERROR, persistence.transaction_id, NULL);
+            return;
+        }
+    }
+
+    uint32_t handle = issue_object_handle(mtp, full_path);
+    persistence.prev_handle = is_dir ? 0 : handle;
+
+    uint32_t params[5] = {storage_id, parent, handle, 0, 0};
+    send_mtp_response(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, persistence.transaction_id, params);
+}
+
+static void handle_set_object_prop_value(AppMTP* mtp) {
+    uint32_t handle = persistence.params[0];
+    uint32_t prop_code = persistence.params[1];
+
+    char* path = get_path_from_handle(mtp, handle);
+    if(path == NULL) {
+        FURI_LOG_E("MTP", "Invalid handle for MTP_OP_SET_OBJECT_PROP_VALUE");
+        send_mtp_response(
+            mtp,
+            MTP_TYPE_RESPONSE,
+            MTP_RESP_INVALID_OBJECT_HANDLE,
+            persistence.transaction_id,
+            NULL);
+        return;
+    }
+
+    if(prop_code != MTP_PROP_OBJECT_FILE_NAME) {
+        FURI_LOG_W("MTP", "Unsupported property code: 0x%04lx", prop_code);
+        send_mtp_response(
+            mtp,
+            MTP_TYPE_RESPONSE,
+            MTP_RESP_INVALID_OBJECT_PROP_CODE,
+            persistence.transaction_id,
+            NULL);
+        return;
+    }
+
+    char* name = ReadMTPString(persistence.global_buffer);
+    char* slash = strrchr(path, '/');
+
+    uint16_t resp_code = MTP_RESP_OK;
+    char new_path[MTP_PATH_SIZE];
+    int len = snprintf(
+        new_path, sizeof(new_path), "%.*s/%s", slash ? (int)(slash - path) : 0, path, name);
+
+    if(*name == 0 || slash == NULL) {
+        resp_code = MTP_RESP_INVALID_OBJECT_PROP_VALUE;
+    } else if(len < 0 || (size_t)len >= sizeof(new_path)) {
+        resp_code = MTP_RESP_GENERAL_ERROR;
+    } else if(strcmp(path, new_path) != 0) {
+        FURI_LOG_I("MTP", "Renaming %s to %s", path, new_path);
+        if(storage_common_rename(mtp->storage, path, new_path) == FSE_OK) {
+            rename_object_handles(mtp, path, new_path);
+        } else {
+            resp_code = MTP_RESP_GENERAL_ERROR;
+        }
+    }
+
+    free(name);
+    send_mtp_response(mtp, MTP_TYPE_RESPONSE, resp_code, persistence.transaction_id, NULL);
+}
+
 void handle_mtp_data_complete(AppMTP* mtp) {
-    // dump the buffer
     print_bytes("MTP Data", persistence.global_buffer, persistence.buffer_offset);
 
-    switch(persistence.op) {
-    case MTP_OP_SEND_OBJECT_INFO: {
-        // parse the object info - persistence.global_buffer doesn't contain MTPHeader
-        struct ObjectInfoHeader* info = (struct ObjectInfoHeader*)(persistence.global_buffer);
-
-        uint8_t* ptr = persistence.global_buffer + sizeof(struct ObjectInfoHeader);
-        ptr += 12;
-
-        // dump the ptr
-        print_bytes(
-            "MTP FileName", ptr, persistence.buffer_offset - sizeof(struct ObjectInfoHeader));
-
-        bool is_dir = info->format == MTP_FORMAT_ASSOCIATION;
-        char* name = NULL;
-        if(CheckMTPStringHasUnicode(ptr)) {
-            // unicode isn't supported
-            name = is_dir ? "New Folder" : "New File";
-        } else {
-            name = ReadMTPString(ptr);
-        }
-
-        // if the name is blank, generate random name
-        if(*name == 0) {
-            char* random_name = malloc(sizeof(char) * 10);
-            strcpy(random_name, "file_");
-            int random = rand() % 1000;
-            char random_str[4];
-            itoa(random, random_str, 10);
-            strcpy(random_name + 5, random_str);
-            name = random_name;
-        }
-
-        FURI_LOG_I("MTP", "Creating object: %s", name);
-
-        uint32_t storage_id = persistence.params[0];
-        uint32_t parent = persistence.params[1];
-
-        char* base_path = get_base_path_from_storage_id(storage_id);
-        if(base_path == NULL) {
-            FURI_LOG_E("MTP", "Invalid storage ID: %ld", storage_id);
-            send_mtp_response(
-                mtp, 3, MTP_RESP_INVALID_STORAGE_ID, persistence.transaction_id, NULL);
-            break;
-        }
-
-        if(parent != 0xffffffff) {
-            base_path = get_path_from_handle(mtp, parent);
-            if(base_path == NULL) {
-                FURI_LOG_E("MTP", "Invalid parent handle: %ld", parent);
-                send_mtp_response(
-                    mtp, 3, MTP_RESP_INVALID_OBJECT_HANDLE, persistence.transaction_id, NULL);
-                break;
-            }
-        }
-
-        char* full_path = malloc(sizeof(char) * MTP_PATH_SIZE);
-        merge_path(full_path, base_path, name);
-
-        FURI_LOG_I("MTP", "Format: %04x", info->format);
-
-        if(is_dir) {
-            if(!storage_dir_exists(mtp->storage, full_path)) {
-                if(!storage_simply_mkdir(mtp->storage, full_path)) {
-                    FURI_LOG_E("MTP", "Failed to create directory: %s", full_path);
-                    send_mtp_response(
-                        mtp, 3, MTP_RESP_GENERAL_ERROR, persistence.transaction_id, NULL);
-                    free(full_path);
-                    break;
-                }
-            }
-        } else {
-            if(!storage_file_exists(mtp->storage, full_path)) {
-                // create file
-                File* file = storage_file_alloc(mtp->storage);
-                if(!storage_file_open(file, full_path, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
-                    FURI_LOG_E("MTP", "Failed to create file: %s", full_path);
-                    send_mtp_response(
-                        mtp, 3, MTP_RESP_GENERAL_ERROR, persistence.transaction_id, NULL);
-                    storage_file_free(file);
-                    free(full_path);
-                    break;
-                }
-
-                storage_file_close(file);
-                storage_file_free(file);
-
-                persistence.prev_handle = issue_object_handle(mtp, full_path);
-            }
-        }
-
-        uint32_t handle = issue_object_handle(mtp, full_path);
-        persistence.params[2] = handle;
-
-        free(name);
-        free(full_path);
-        send_mtp_response(mtp, 3, MTP_RESP_OK, persistence.transaction_id, persistence.params);
-
-        break;
-    }
-    default:
-        FURI_LOG_W("MTP", "Unsupported MTP operation in bulk transfer: 0x%04x", persistence.op);
-        send_mtp_response(mtp, 3, MTP_RESP_UNKNOWN, persistence.transaction_id, NULL);
-        break;
+    if(persistence.resp_code != MTP_RESP_OK) {
+        send_mtp_response(
+            mtp, MTP_TYPE_RESPONSE, persistence.resp_code, persistence.transaction_id, NULL);
+    } else if(persistence.op == MTP_OP_SEND_OBJECT_INFO) {
+        handle_send_object_info(mtp);
+    } else if(persistence.op == MTP_OP_SET_OBJECT_PROP_VALUE) {
+        handle_set_object_prop_value(mtp);
     }
 
     free(persistence.global_buffer);
@@ -321,8 +387,6 @@ void handle_mtp_response(AppMTP* mtp, struct MTPHeader* header) {
     UNUSED(mtp);
     FURI_LOG_I("MTP", "Handling MTP response: 0x%04x", header->op);
     FURI_LOG_I("MTP", "Transaction ID: %ld", header->transaction_id);
-    FURI_LOG_I("MTP", "Has Data: %d", persistence.global_buffer != NULL);
-    FURI_LOG_I("MTP", "Data length: %ld", persistence.buffer_offset);
 }
 
 void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
@@ -360,6 +424,22 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
         free(info);
         break;
     }
+    case MTP_OP_GET_NUM_OBJECTS:
+        FURI_LOG_I("MTP", "GetNumObjects operation");
+        if(container->params[1]) {
+            send_mtp_response(
+                mtp,
+                MTP_TYPE_RESPONSE,
+                MTP_RESP_SPEC_BY_FORMAT_UNSUPPORTED,
+                container->header.transaction_id,
+                NULL);
+        } else {
+            uint32_t params[5] = {
+                GetNumObjects(mtp, container->params[0], container->params[2]), 0, 0, 0, 0};
+            send_mtp_response(
+                mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, container->header.transaction_id, params);
+        }
+        break;
     case MTP_OP_GET_OBJECT_HANDLES:
         FURI_LOG_I("MTP", "GetObjectHandles operation");
         if(container->params[1]) {
@@ -372,19 +452,20 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
                 0);
             break;
         } else {
-            uint8_t* buffer = malloc(sizeof(uint8_t) * MTP_BUFFER_SIZE);
-            int length = GetObjectHandles(mtp, container->params[0], container->params[2], buffer);
+            uint32_t* handles = NULL;
+            int count =
+                list_and_issue_handles(mtp, container->params[0], container->params[2], &handles);
             send_mtp_response_buffer(
                 mtp,
                 MTP_TYPE_DATA,
                 MTP_OP_GET_OBJECT_HANDLES,
                 container->header.transaction_id,
-                buffer,
-                length);
+                (uint8_t*)handles,
+                sizeof(uint32_t) * (count + 1));
 
             send_mtp_response_buffer(
                 mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, container->header.transaction_id, NULL, 0);
-            free(buffer);
+            free(handles);
         }
         break;
     case MTP_OP_GET_OBJECT_INFO: {
@@ -399,6 +480,7 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
                 MTP_RESP_INVALID_OBJECT_HANDLE,
                 container->header.transaction_id,
                 NULL);
+            free(buffer);
             break;
         }
 
@@ -505,7 +587,8 @@ void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container) {
     }
     default:
         FURI_LOG_W("MTP", "Unsupported MTP operation in bulk transfer: 0x%04x", mtp_op);
-        send_mtp_response(mtp, 3, MTP_RESP_UNKNOWN, container->header.transaction_id, NULL);
+        send_mtp_response(
+            mtp, 3, MTP_RESP_OPERATION_NOT_SUPPORTED, container->header.transaction_id, NULL);
         break;
     }
 }
@@ -539,7 +622,13 @@ void send_device_info(AppMTP* mtp, uint32_t transaction_id) {
 int GetNumObjects(AppMTP* mtp, uint32_t storage_id, uint32_t association) {
     return list_and_issue_handles(mtp, storage_id, association, NULL);
 }
-void send_mtp_response_stream(
+
+/**
+ * Sends a container of `length` payload bytes, pulling the payload from `callback`.
+ * Returns false if the host stopped accepting data (timeout, cancel, reset).
+ * If the callback runs dry early the rest is zero padded to keep the host in sync.
+ */
+bool send_mtp_response_stream(
     AppMTP* mtp,
     uint16_t resp_type,
     uint16_t resp_code,
@@ -547,50 +636,55 @@ void send_mtp_response_stream(
     void* callback_context,
     int (*callback)(void* ctx, uint8_t* buffer, int length),
     uint32_t length) {
-    int chunk_idx = 0;
+    uint32_t packet[MTP_MAX_PACKET_SIZE / sizeof(uint32_t)]; // word aligned for the header
+    uint8_t* buffer = (uint8_t*)packet;
+    uint32_t total = length + sizeof(struct MTPHeader);
+    uint32_t remaining = length;
+    bool source_ok = true;
+    bool first = true;
 
-    size_t buffer_available = MTP_MAX_PACKET_SIZE;
-    uint8_t* buffer = malloc(sizeof(uint8_t) * buffer_available);
-    uint8_t* ptr = buffer;
+    while(first || remaining > 0) {
+        uint8_t* ptr = buffer;
 
-    uint32_t sent_length = 0;
-    FURI_LOG_I("MTP", "Sending MTP response stream: %ld bytes", length);
-
-    do {
-        buffer_available = MTP_MAX_PACKET_SIZE;
-        ptr = buffer; // reset the pointer
-
-        if(chunk_idx == 0) {
+        if(first) {
             struct MTPHeader* hdr = (struct MTPHeader*)buffer;
-            hdr->len = length + sizeof(*hdr);
+            hdr->len = total;
             hdr->type = resp_type;
             hdr->op = resp_code;
             hdr->transaction_id = transaction_id;
 
             ptr += sizeof(*hdr);
-            buffer_available -= sizeof(*hdr);
+            first = false;
         }
 
-        FURI_LOG_I("MTP", "Remaining bytes for packet: %d", buffer_available);
+        uint32_t to_fill = MIN((uint32_t)(buffer + MTP_MAX_PACKET_SIZE - ptr), remaining);
+        remaining -= to_fill;
 
-        int read_bytes = callback(callback_context, ptr, buffer_available);
-        uint32_t usb_bytes = (ptr - buffer) + read_bytes;
-        FURI_LOG_I("MTP", "USB packet size: %ld", usb_bytes);
+        while(to_fill > 0) {
+            int read_bytes = source_ok ? callback(callback_context, ptr, to_fill) : 0;
+            if(read_bytes <= 0) {
+                if(source_ok) FURI_LOG_E("MTP", "Stream source ended early");
+                source_ok = false;
+                memset(ptr, 0, to_fill);
+                read_bytes = to_fill;
+            }
 
-        usbd_ep_write(mtp->dev, MTP_EP_IN_ADDR, buffer, usb_bytes);
+            ptr += read_bytes;
+            to_fill -= read_bytes;
+        }
 
-        sent_length += usb_bytes;
-        chunk_idx++;
+        if(!usb_mtp_write(mtp, buffer, ptr - buffer)) {
+            FURI_LOG_E("MTP", "Stream aborted, %ld bytes left", remaining);
+            return false;
+        }
+    }
 
-        FURI_LOG_I(
-            "MTP",
-            "Sent chunk %d (currently sent: %ld/%ld)",
-            chunk_idx,
-            sent_length - sizeof(struct MTPHeader),
-            length);
-    } while(sent_length < length + sizeof(struct MTPHeader));
+    // a transfer ending on a packet boundary has to be terminated with a ZLP
+    if(total % MTP_MAX_PACKET_SIZE == 0) {
+        return usb_mtp_write(mtp, NULL, 0);
+    }
 
-    free(buffer);
+    return true;
 }
 
 int send_mtp_response_buffer_callback(void* ctx, uint8_t* buffer, int size) {
@@ -618,14 +712,14 @@ void send_mtp_response_buffer(
     uint32_t transaction_id,
     uint8_t* buffer,
     uint32_t size) {
-    struct MTPResponseBufferContext* ctx = malloc(sizeof(struct MTPResponseBufferContext));
-    ctx->buffer = buffer;
-    ctx->size = size;
-    ctx->sent = 0;
+    struct MTPResponseBufferContext ctx = {
+        .buffer = buffer,
+        .size = size,
+        .sent = 0,
+    };
 
     send_mtp_response_stream(
-        mtp, resp_type, resp_code, transaction_id, ctx, send_mtp_response_buffer_callback, size);
-    free(ctx);
+        mtp, resp_type, resp_code, transaction_id, &ctx, send_mtp_response_buffer_callback, size);
 }
 
 void send_mtp_response(
@@ -658,25 +752,26 @@ int mtp_handle_class_control(AppMTP* mtp, usbd_device* dev, usbd_ctlreq* req) {
 
     switch(req->bRequest) {
     case MTP_REQ_CANCEL:
-        // Handle Cancel request
+    case MTP_REQ_RESET:
+        // Runs in the USB IRQ: let the worker drop the transfer in progress
+        mtp->state = MTPStateReady;
+        if(mtp->worker_thread != NULL) {
+            furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventCancel);
+        }
         value = 0;
         break;
     case MTP_REQ_GET_EXT_EVENT_DATA:
         // Handle GetExtEventData request
         value = 0;
         break;
-    case MTP_REQ_RESET:
-        // Handle Reset request
-        mtp->state = MTPStateReady;
-        value = 0;
-        break;
-    case MTP_REQ_GET_DEVICE_STATUS:
+    case MTP_REQ_GET_DEVICE_STATUS: {
         // Handle GetDeviceStatus request
         struct mtp_device_status* status = (struct mtp_device_status*)req->data;
         status->wLength = sizeof(*status);
         status->wCode = (mtp->state == MTPStateBusy) ? MTP_RESP_DEVICE_BUSY : MTP_RESP_OK;
         value = status->wLength;
         break;
+    }
     default:
         // Unsupported request
         break;

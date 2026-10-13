@@ -90,12 +90,10 @@ int GetObjectInfo(AppMTP* mtp, uint32_t handle, uint8_t* buffer) {
 
     header->protection_status = 0;
 
-    Storage* storage = mtp->storage;
-    File* file = storage_file_alloc(storage);
     uint16_t length;
 
     FileInfo fileinfo;
-    FS_Error err = storage_common_stat(storage, path, &fileinfo);
+    FS_Error err = storage_common_stat(mtp->storage, path, &fileinfo);
     if(err != FSE_OK) {
         FURI_LOG_E("MTP", "Failed to get file info: %s", filesystem_api_error_get_desc(err));
         return -1;
@@ -150,14 +148,26 @@ int GetObjectInfo(AppMTP* mtp, uint32_t handle, uint8_t* buffer) {
     WriteMTPString(ptr, "", &length);
     ptr += length;
 
-    storage_file_free(file);
-
     return ptr - buffer;
 }
 
 int GetObject_callback(void* ctx, uint8_t* buffer, int length) {
     struct GetObjectContext* obj_ctx = (struct GetObjectContext*)ctx;
-    return storage_file_read(obj_ctx->file, buffer, length);
+
+    // read ahead in large chunks, the USB side only takes 64 bytes at a time
+    if(obj_ctx->buffer_pos >= obj_ctx->buffer_len) {
+        obj_ctx->buffer_len =
+            storage_file_read(obj_ctx->file, obj_ctx->buffer, MTP_FILE_BUFFER_SIZE);
+        obj_ctx->buffer_pos = 0;
+        if(obj_ctx->buffer_len == 0) return 0;
+    }
+
+    uint32_t to_copy = MIN((uint32_t)length, obj_ctx->buffer_len - obj_ctx->buffer_pos);
+    memcpy(buffer, obj_ctx->buffer + obj_ctx->buffer_pos, to_copy);
+    obj_ctx->buffer_pos += to_copy;
+    obj_ctx->sent += to_copy;
+
+    return to_copy;
 }
 
 void GetObject(AppMTP* mtp, uint32_t transaction_id, uint32_t handle) {
@@ -174,6 +184,7 @@ void GetObject(AppMTP* mtp, uint32_t transaction_id, uint32_t handle) {
     File* file = storage_file_alloc(storage);
     if(!storage_file_open(file, path, FSAM_READ, FSOM_OPEN_EXISTING)) {
         FURI_LOG_E("MTP", "Failed to open file: %s", path);
+        storage_file_free(file);
         send_mtp_response(
             mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_OBJECT_HANDLE, transaction_id, NULL);
         return;
@@ -183,38 +194,24 @@ void GetObject(AppMTP* mtp, uint32_t transaction_id, uint32_t handle) {
 
     struct GetObjectContext ctx = {
         .file = file,
+        .buffer = malloc(MTP_FILE_BUFFER_SIZE),
     };
 
-    send_mtp_response_stream(
+    bool usb_ok = send_mtp_response_stream(
         mtp, MTP_TYPE_DATA, MTP_OP_GET_OBJECT, transaction_id, &ctx, GetObject_callback, size);
 
-    send_mtp_response(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL);
+    // nothing more to say if the host walked away
+    if(usb_ok) {
+        uint16_t resp_code = ctx.sent == size ? MTP_RESP_OK : MTP_RESP_INCOMPLETE_TRANSFER;
+        send_mtp_response(mtp, MTP_TYPE_RESPONSE, resp_code, transaction_id, NULL);
+    }
 
+    free(ctx.buffer);
     storage_file_close(file);
     storage_file_free(file);
 }
 
-int GetObjectHandles(AppMTP* mtp, uint32_t storage_id, uint32_t association, uint8_t* buffer) {
-    uint8_t* ptr = buffer;
-    uint16_t length;
-
-    UNUSED(length);
-
-    // For now, just return a single object handle
-    int count = list_and_issue_handles(mtp, storage_id, association, NULL);
-
-    *(uint32_t*)ptr = count;
-    ptr += sizeof(uint32_t);
-
-    uint32_t* handles = (uint32_t*)ptr;
-    length = list_and_issue_handles(mtp, storage_id, association, handles);
-    ptr += length * sizeof(uint32_t);
-
-    return ptr - buffer;
-}
-
 bool DeleteObject(AppMTP* mtp, uint32_t handle) {
-    UNUSED(mtp);
     FURI_LOG_I("MTP", "Deleting object %ld", handle);
 
     char* path = get_path_from_handle(mtp, handle);
@@ -224,22 +221,22 @@ bool DeleteObject(AppMTP* mtp, uint32_t handle) {
 
     FileInfo fileinfo;
     FS_Error err = storage_common_stat(mtp->storage, path, &fileinfo);
-
-    if(err == FSE_OK) {
-        if(file_info_is_dir(&fileinfo)) {
-            if(!storage_simply_remove_recursive(mtp->storage, path)) {
-                return false;
-            }
-        } else {
-            if(storage_common_remove(mtp->storage, path) != FSE_OK) {
-                return false;
-            }
-        }
-
-        return true;
+    if(err != FSE_OK) {
+        return false;
     }
 
-    return false;
+    if(file_info_is_dir(&fileinfo)) {
+        if(!storage_simply_remove_recursive(mtp->storage, path)) {
+            return false;
+        }
+    } else {
+        if(storage_common_remove(mtp->storage, path) != FSE_OK) {
+            return false;
+        }
+    }
+
+    remove_object_handles(mtp, path);
+    return true;
 }
 
 void MoveObject(
@@ -248,8 +245,6 @@ void MoveObject(
     uint32_t handle,
     uint32_t storage_id,
     uint32_t parent) {
-    UNUSED(storage_id);
-
     FURI_LOG_I("MTP", "Moving object %ld to storage %ld, parent %ld", handle, storage_id, parent);
     char* path = get_path_from_handle(mtp, handle);
     if(path == NULL) {
@@ -264,38 +259,42 @@ void MoveObject(
         parentPath = get_path_from_handle(mtp, parent);
         if(parentPath == NULL) {
             send_mtp_response(
-                mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_OBJECT_HANDLE, transaction_id, NULL);
+                mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_PARENT_OBJECT, transaction_id, NULL);
             return;
         }
     } else {
         parentPath = get_base_path_from_storage_id(storage_id);
+        if(parentPath == NULL) {
+            send_mtp_response(
+                mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_STORAGE_ID, transaction_id, NULL);
+            return;
+        }
     }
-
-    Storage* storage = mtp->storage;
 
     char* filename = strrchr(path, '/');
     // remove the beginning slash
-    char* realFilename = filename + 1;
+    char* realFilename = filename ? filename + 1 : path;
 
-    char* newPath = malloc(sizeof(char) * 256);
-    merge_path(newPath, parentPath, realFilename);
+    char newPath[MTP_PATH_SIZE];
+    if(!merge_path(newPath, sizeof(newPath), parentPath, realFilename)) {
+        send_mtp_response(mtp, MTP_TYPE_RESPONSE, MTP_RESP_GENERAL_ERROR, transaction_id, NULL);
+        return;
+    }
 
     FURI_LOG_I("MTP", "Moving object: %s to %s", path, newPath);
 
-    if(storage_common_rename(storage, path, newPath) != FSE_OK) {
+    if(storage_common_rename(mtp->storage, path, newPath) != FSE_OK) {
         FURI_LOG_E("MTP", "Failed to move object: %s", path);
         send_mtp_response(
             mtp, MTP_TYPE_RESPONSE, MTP_RESP_INVALID_OBJECT_HANDLE, transaction_id, NULL);
         return;
     }
 
+    // children of a moved directory follow it
+    rename_object_handles(mtp, path, newPath);
+
     FURI_LOG_I("MTP", "Object moved successfully");
     send_mtp_response(mtp, MTP_TYPE_RESPONSE, MTP_RESP_OK, transaction_id, NULL);
-
-    update_object_handle_path(mtp, handle, newPath);
-    free(path);
-
-    return;
 }
 
 int GetObjectPropValueInternal(AppMTP* mtp, const char* path, uint32_t prop_code, uint8_t* buffer) {

@@ -12,15 +12,34 @@
 AppMTP* global_mtp;
 uint8_t last_ep;
 
-typedef enum {
-    EventExit = 1 << 0,
-    EventReset = 1 << 1,
-    EventRx = 1 << 2,
-    EventTx = 1 << 3,
-    EventRxOther = 1 << 4,
-    EventInterrupt = 1 << 5,
-    EventAll = EventExit | EventReset | EventRx | EventTx | EventRxOther | EventInterrupt,
-} MTPEvent;
+static bool usb_mtp_wait_tx(void) {
+    const uint32_t abort_flags = EventExit | EventReset | EventCancel;
+    uint32_t flags =
+        furi_thread_flags_wait(EventTx | abort_flags, FuriFlagWaitAny, MTP_TX_TIMEOUT_MS);
+    if(flags & FuriFlagError) {
+        FURI_LOG_E("MTP", "Tx timeout");
+        return false;
+    }
+
+    if(flags & abort_flags) {
+        // hand the abort reason back to the worker loop
+        furi_thread_flags_set(furi_thread_get_current_id(), flags & abort_flags);
+        return false;
+    }
+
+    return true;
+}
+
+bool usb_mtp_write(AppMTP* mtp, const uint8_t* buf, uint16_t len) {
+    // The IN endpoint is single buffered: a write while the previous packet
+    // has not been collected yet is rejected by the driver.
+    if(usbd_ep_write(mtp->dev, MTP_EP_IN_ADDR, buf, len) < 0) {
+        if(!usb_mtp_wait_tx()) return false;
+        if(usbd_ep_write(mtp->dev, MTP_EP_IN_ADDR, buf, len) < 0) return false;
+    }
+
+    return usb_mtp_wait_tx();
+}
 
 int32_t usb_mtp_worker(void* ctx) {
     AppMTP* mtp = ctx;
@@ -28,36 +47,25 @@ int32_t usb_mtp_worker(void* ctx) {
     uint8_t buffer[MTP_MAX_PACKET_SIZE];
 
     while(true) {
-        MTPEvent flags = furi_thread_flags_wait(EventAll, FuriFlagWaitAny, FuriWaitForever);
+        uint32_t flags = furi_thread_flags_wait(EventAll, FuriFlagWaitAny, FuriWaitForever);
+        if(flags & FuriFlagError) continue;
+
         if(flags & EventExit) {
             FURI_LOG_W("MTP", "Worker thread exit");
+            mtp_reset_transfer(mtp);
             break;
         }
 
-        if(flags & EventReset) {
-            FURI_LOG_W("MTP", "USB reset");
-            // Handle USB reset if necessary
-        }
-
-        if(flags & EventTx) {
-            FURI_LOG_W("MTP", "USB Tx event");
-            // Handle MTP RX/TX data here
-            // Implement the logic for processing MTP requests, sending responses, etc.
-            mtp->write_pending = false;
+        if(flags & (EventReset | EventCancel)) {
+            FURI_LOG_W("MTP", "Transfer reset");
+            mtp_reset_transfer(mtp);
         }
 
         if(flags & EventRx) {
-            FURI_LOG_W("MTP", "USB Rx event");
-
             int32_t readBytes = usbd_ep_read(dev, MTP_EP_OUT_ADDR, buffer, MTP_MAX_PACKET_SIZE);
-            FURI_LOG_I("MTP", "Received %ld bytes on RX", readBytes);
-
             if(readBytes > 0) {
                 mtp_handle_bulk(mtp, buffer, readBytes);
             }
-
-            // Handle MTP RX/TX data here
-            // Implement the logic for processing MTP requests, sending responses, etc.
         }
 
         if(flags & EventRxOther) {
@@ -65,9 +73,7 @@ int32_t usb_mtp_worker(void* ctx) {
         }
 
         if(flags & EventInterrupt) {
-            FURI_LOG_W("MTP", "USB Interrupt event");
-            // Handle MTP RX/TX data here
-            // Implement the logic for processing MTP requests, sending responses, etc.
+            FURI_LOG_D("MTP", "USB Interrupt event");
         }
     }
 
@@ -122,15 +128,12 @@ usbd_respond usb_mtp_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_callba
 }
 
 void usb_mtp_txrx(usbd_device* dev, uint8_t event, uint8_t ep) {
-    UNUSED(ep);
-    UNUSED(event);
-
     AppMTP* mtp = global_mtp;
     if(!mtp || mtp->dev != dev) return;
 
-    if(ep == MTP_EP_OUT_ADDR) {
+    if(event == usbd_evt_eprx) {
         furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventRx);
-    } else if(ep == MTP_EP_IN_ADDR) {
+    } else if(event == usbd_evt_eptx) {
         furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventTx);
     } else {
         furi_thread_flags_set(furi_thread_get_id(mtp->worker_thread), EventRxOther);
@@ -141,8 +144,6 @@ void usb_mtp_txrx(usbd_device* dev, uint8_t event, uint8_t ep) {
 void usb_mtp_interrupt(usbd_device* dev, uint8_t event, uint8_t ep) {
     UNUSED(ep);
     UNUSED(event);
-
-    FURI_LOG_I("MTP", "USB Interrupt");
 
     AppMTP* mtp = global_mtp;
     if(!mtp || mtp->dev != dev) return;
@@ -211,7 +212,7 @@ void usb_mtp_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     // Initialize worker thread
     mtp->worker_thread = furi_thread_alloc();
     furi_thread_set_name(mtp->worker_thread, "FlipperMTPUsb");
-    furi_thread_set_stack_size(mtp->worker_thread, 1024);
+    furi_thread_set_stack_size(mtp->worker_thread, 2 * 1024);
     furi_thread_set_context(mtp->worker_thread, ctx);
     furi_thread_set_callback(mtp->worker_thread, usb_mtp_worker);
     furi_thread_start(mtp->worker_thread);

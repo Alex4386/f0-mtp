@@ -14,7 +14,7 @@
 // Endpoint Addresses
 #define MTP_EP_IN_ADDR     0x81
 #define MTP_EP_OUT_ADDR    0x02
-#define MTP_EP_INT_IN_ADDR 0x03
+#define MTP_EP_INT_IN_ADDR 0x83
 
 #define MTP_MAX_PACKET_SIZE    64
 #define USB_MAX_INTERRUPT_SIZE 28

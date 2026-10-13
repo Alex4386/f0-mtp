@@ -1,6 +1,21 @@
 #include "storage_ops.h"
 #include "utils.h"
 
+static uint32_t hash_path(const char* path) {
+    // FNV-1a
+    uint32_t hash = 2166136261u;
+    while(*path) {
+        hash ^= (uint8_t)*path++;
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+// true if `path` is `base` itself or lies below it
+static bool path_is_under(const char* path, const char* base, size_t base_len) {
+    return strncmp(path, base, base_len) == 0 && (path[base_len] == '\0' || path[base_len] == '/');
+}
+
 char* get_base_path_from_storage_id(uint32_t storage_id) {
     if(storage_id == INTERNAL_STORAGE_ID) {
         return STORAGE_INT_PATH_PREFIX;
@@ -21,110 +36,138 @@ char* get_path_from_handle(AppMTP* mtp, uint32_t handle) {
     return NULL;
 }
 
-uint32_t issue_object_handle(AppMTP* mtp, char* path) {
-    int handle = 1;
-    int length = strlen(path);
-    char* path_store = malloc(sizeof(char) * (length + 1));
-    strcpy(path_store, path);
+uint32_t issue_object_handle(AppMTP* mtp, const char* path) {
+    uint32_t hash = hash_path(path);
 
-    if(mtp->handles == NULL) {
-        mtp->handles = malloc(sizeof(FileHandle));
-        mtp->handles->handle = handle;
-        mtp->handles->path = path_store;
-        mtp->handles->next = NULL;
-        return handle;
-    }
-
-    FileHandle* current = mtp->handles;
-    if(strcmp(current->path, path) == 0) {
-        return current->handle;
-    }
-
-    while(current->next != NULL) {
-        if(strcmp(current->path, path) == 0) {
+    for(FileHandle* current = mtp->handles; current != NULL; current = current->next) {
+        if(current->hash == hash && strcmp(current->path, path) == 0) {
             return current->handle;
         }
-        current = current->next;
-        handle++;
     }
 
-    current->next = malloc(sizeof(FileHandle));
-    current = current->next;
-    handle++;
+    FileHandle* entry = malloc(sizeof(FileHandle));
+    entry->handle = ++mtp->last_handle;
+    entry->hash = hash;
+    entry->path = strdup(path);
+    entry->next = mtp->handles;
+    mtp->handles = entry;
 
-    current->handle = handle;
-    current->path = path_store;
-    current->next = NULL;
-    return handle;
+    return entry->handle;
 }
 
-uint32_t update_object_handle_path(AppMTP* mtp, uint32_t handle, char* path) {
-    FileHandle* current = mtp->handles;
-    while(current != NULL) {
-        if(current->handle == handle) {
-            free(current->path);
-            current->path = path;
-            return handle;
-        }
-        current = current->next;
+void rename_object_handles(AppMTP* mtp, const char* old_path, const char* new_path) {
+    // old_path may point into one of the entries being rewritten
+    char* old_copy = strdup(old_path);
+    size_t old_len = strlen(old_copy);
+
+    for(FileHandle* current = mtp->handles; current != NULL; current = current->next) {
+        if(!path_is_under(current->path, old_copy, old_len)) continue;
+
+        const char* rest = current->path + old_len;
+        size_t len = strlen(new_path) + strlen(rest) + 1;
+        char* path = malloc(len);
+        snprintf(path, len, "%s%s", new_path, rest);
+
+        free(current->path);
+        current->path = path;
+        current->hash = hash_path(path);
     }
-    return 0;
+
+    free(old_copy);
+}
+
+void remove_object_handles(AppMTP* mtp, const char* path) {
+    // path may point into one of the entries being removed
+    char* path_copy = strdup(path);
+    size_t path_len = strlen(path_copy);
+
+    FileHandle** link = &mtp->handles;
+    while(*link != NULL) {
+        FileHandle* current = *link;
+        if(path_is_under(current->path, path_copy, path_len)) {
+            *link = current->next;
+            free(current->path);
+            free(current);
+        } else {
+            link = &current->next;
+        }
+    }
+
+    free(path_copy);
+}
+
+void free_object_handles(AppMTP* mtp) {
+    FileHandle* handle = mtp->handles;
+    mtp->handles = NULL;
+
+    while(handle != NULL) {
+        FileHandle* next = handle->next;
+        free(handle->path);
+        free(handle);
+        handle = next;
+    }
 }
 
 int list_and_issue_handles(
     AppMTP* mtp,
     uint32_t storage_id,
     uint32_t association,
-    uint32_t* handles) {
-    Storage* storage = mtp->storage;
-    char* base_path = get_base_path_from_storage_id(storage_id);
-    if(base_path == NULL) {
-        base_path = "";
-    }
-
-    File* dir = storage_file_alloc(storage);
+    uint32_t** handles) {
+    const char* base_path;
     if(association == 0xffffffff) {
-        // count the objects in the root directory
-        storage_dir_open(dir, base_path);
+        // root of the storage. "all storages" means the only one we expose.
+        base_path = get_base_path_from_storage_id(
+            storage_id == 0xffffffff ? EXTERNAL_STORAGE_ID : storage_id);
     } else {
-        char* path = get_path_from_handle(mtp, association);
-        FURI_LOG_I("MTP", "Association path: %s", path);
-        if(path == NULL) {
-            return 0;
-        }
-        storage_dir_open(dir, path);
-        base_path = path;
+        base_path = get_path_from_handle(mtp, association);
     }
 
     int count = 0;
-    FileInfo fileinfo;
-    char* file_name = malloc(sizeof(char) * 256);
-    char* full_path = malloc(sizeof(char) * 256);
-    while(storage_dir_read(dir, &fileinfo, file_name, 256)) {
-        if(file_info_is_dir(&fileinfo)) {
-            FURI_LOG_I("MTP", "Found directory: %s", file_name);
+    uint32_t capacity = 0;
+    uint32_t* list = NULL;
+
+    if(base_path != NULL) {
+        File* dir = storage_file_alloc(mtp->storage);
+        if(storage_dir_open(dir, base_path)) {
+            FileInfo fileinfo;
+            char* file_name = malloc(sizeof(char) * MTP_NAME_SIZE);
+            char* full_path = malloc(sizeof(char) * MTP_PATH_SIZE);
+
+            while(storage_dir_read(dir, &fileinfo, file_name, MTP_NAME_SIZE)) {
+                if(!merge_path(full_path, MTP_PATH_SIZE, base_path, file_name)) {
+                    FURI_LOG_W("MTP", "Path too long, skipped: %s", file_name);
+                    continue;
+                }
+
+                uint32_t handle = issue_object_handle(mtp, full_path);
+                if(handles != NULL) {
+                    // slot 0 is reserved for the count
+                    if((uint32_t)count + 2 > capacity) {
+                        capacity = capacity ? capacity * 2 : 32;
+                        list = realloc(list, sizeof(uint32_t) * capacity);
+                    }
+                    list[count + 1] = handle;
+                }
+                count++;
+            }
+
+            free(file_name);
+            free(full_path);
         } else {
-            FURI_LOG_I("MTP", "Found file: %s", file_name);
+            FURI_LOG_E("MTP", "Failed to open directory: %s", base_path);
         }
 
-        merge_path(full_path, base_path, file_name);
-        FURI_LOG_I("MTP", "Full path: %s", full_path);
-
-        uint32_t handle = issue_object_handle(mtp, full_path);
-        if(handles != NULL) {
-            handles[count] = handle;
-        }
-        count++;
+        storage_dir_close(dir);
+        storage_file_free(dir);
     }
 
-    FURI_LOG_I("MTP", "Getting number of objects in storage %ld", storage_id);
-    FURI_LOG_I("MTP", "Base path: %s", base_path);
-    FURI_LOG_I("MTP", "Association: %ld", association);
-    FURI_LOG_I("MTP", "Number of objects: %d", count);
+    FURI_LOG_I("MTP", "Objects in %s: %d", base_path ? base_path : "(invalid)", count);
 
-    storage_dir_close(dir);
-    storage_file_free(dir);
-    free(file_name);
-    free(full_path);
+    if(handles != NULL) {
+        if(list == NULL) list = malloc(sizeof(uint32_t));
+        list[0] = count;
+        *handles = list;
+    }
+
     return count;
 }

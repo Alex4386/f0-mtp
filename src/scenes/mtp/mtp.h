@@ -79,7 +79,9 @@
 #define MTP_RESP_UNKNOWN_VENDOR_CODE        0x2017
 #define MTP_RESP_CAPTURE_ALREADY_TERMINATED 0x2018
 #define MTP_RESP_DEVICE_BUSY                0x2019
+#define MTP_RESP_INVALID_PARENT_OBJECT      0x201A
 #define MTP_RESP_INVALID_OBJECT_PROP_CODE   0xA801
+#define MTP_RESP_INVALID_OBJECT_PROP_VALUE  0xA803
 
 // Storage IDs
 #define INTERNAL_STORAGE_ID 0x00010001
@@ -95,7 +97,10 @@
 #define MTP_NAME_SIZE   256 // Maximum filename length
 
 // File transfer configuration
-#define MTP_FILE_SYNC_INTERVAL (1024 * 1024) // Sync interval in bytes (1MB)
+#define MTP_FILE_BUFFER_SIZE 4096 // Storage I/O chunk for SendObject / GetObject
+
+// Size of the fixed part of the ObjectInfo dataset (Filename string follows)
+#define MTP_OBJECT_INFO_FIXED_SIZE 52
 
 typedef struct {
     uint32_t handle;
@@ -145,9 +150,10 @@ struct MTPHeader {
 };
 
 typedef struct MTPDataPersistence {
-    uint32_t left_bytes;
+    uint32_t left_bytes; // payload bytes still expected in the current data phase
     uint8_t* global_buffer;
     uint32_t buffer_offset;
+    uint16_t resp_code; // response sent once the data phase completes
 
     uint16_t op;
     uint32_t transaction_id;
@@ -165,6 +171,7 @@ struct MTPContainer {
 void OpenSession(AppMTP* mtp, uint32_t session_id);
 void CloseSession(AppMTP* mtp);
 
+void mtp_reset_transfer(AppMTP* mtp);
 void mtp_handle_bulk(AppMTP* mtp, uint8_t* buffer, uint32_t length);
 void handle_mtp_command(AppMTP* mtp, struct MTPContainer* container);
 void handle_mtp_data_packet(AppMTP* mtp, uint8_t* buffer, int32_t length, bool cont);
@@ -183,7 +190,7 @@ void send_mtp_response_buffer(
     uint32_t transaction_id,
     uint8_t* buffer,
     uint32_t size);
-void send_mtp_response_stream(
+bool send_mtp_response_stream(
     AppMTP* mtp,
     uint16_t resp_type,
     uint16_t resp_code,
@@ -193,6 +200,7 @@ void send_mtp_response_stream(
     uint32_t length);
 
 void send_device_info(AppMTP* mtp, uint32_t transaction_id);
+int GetNumObjects(AppMTP* mtp, uint32_t storage_id, uint32_t association);
 void send_storage_ids(AppMTP* mtp, uint32_t transaction_id);
 
 void handle_mtp_data_complete(AppMTP* mtp);
@@ -206,4 +214,8 @@ struct MTPResponseBufferContext {
 // Object context for file operations
 struct GetObjectContext {
     File* file;
+    uint8_t* buffer; // read-ahead buffer of MTP_FILE_BUFFER_SIZE
+    uint32_t buffer_pos;
+    uint32_t buffer_len;
+    uint32_t sent;
 };

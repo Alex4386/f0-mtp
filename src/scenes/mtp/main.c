@@ -5,6 +5,7 @@
 #include <f0_mtp_icons.h>
 #include "usb.h"
 #include "usb_desc.h"
+#include "storage_ops.h"
 
 #define THIS_SCENE MTP
 
@@ -13,6 +14,7 @@ AppMTP* tmp;
 void MTP_on_draw(Canvas* canvas, void* context);
 AppMTP* MTP_alloc() {
     AppMTP* mtp = (AppMTP*)malloc(sizeof(AppMTP));
+    memset(mtp, 0, sizeof(AppMTP));
     mtp->view = view_alloc();
     view_set_context(mtp->view, mtp);
     view_set_draw_callback(mtp->view, MTP_on_draw);
@@ -114,28 +116,18 @@ void MTP_on_exit(void* context) {
         return;
     }
 
+    // revert to old usb mode first: this joins the worker thread,
+    // which may still be using the handles and the storage.
+    furi_hal_usb_set_config(tmp->old_usb, NULL);
+
     if(app->allocated_scenes != NULL) {
         AppMTP* mtp = app->allocated_scenes[THIS_SCENE];
         if(mtp != NULL) {
-            // free all handles
-            FileHandle* handle = mtp->handles;
-            mtp->handles = NULL;
-
-            while(handle != NULL) {
-                FileHandle* next = handle->next;
-
-                if(handle->path != NULL) free(handle->path);
-                free(handle);
-
-                handle = next;
-            }
+            free_object_handles(mtp);
         }
     }
 
     furi_record_close(RECORD_STORAGE);
-
-    // revert to old usb mode
-    furi_hal_usb_set_config(tmp->old_usb, NULL);
 
     // if(app->view_dispatcher) view_dispatcher_switch_to_view(app->view_dispatcher, Home);
     // if(app->scene_manager) scene_manager_previous_scene(app->scene_manager);
